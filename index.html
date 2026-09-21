@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="theme-color" content="#fbd3e1">
+  <title>Nuestro jardín</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌷</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Mali:wght@400;600&family=Sniglet:wght@400;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body data-mode="view">
+  <canvas id="scene" aria-label="Escena 3D: ramo de flores y jardín"></canvas>
+
+  <div id="loader" role="status">
+    <div class="bloom" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+    <p>Preparando las flores…</p>
+  </div>
+
+  <section id="intro" class="hidden">
+    <h1>Un ramo para ti</h1>
+    <p class="hint">Gira el ramo con un dedo, acércate con dos y toca los pétalos.</p>
+  </section>
+  <button id="placeBtn" class="btn big hidden">Colocarlas</button>
+
+  <header id="hud" class="hidden">
+    <div class="lvl">
+      <span class="lv" aria-label="Nivel"><small>Nv</small><b id="lvNum">1</b></span>
+      <div class="xp">
+        <div class="xpbar"><i id="xpFill"></i></div>
+        <small id="xpText">0 de 65 XP</small>
+      </div>
+    </div>
+    <div class="chips">
+      <span class="chip"><svg class="coin" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="#f5c04e"/><circle cx="12" cy="12" r="6.5" fill="none" stroke="#d99a1e" stroke-width="2"/></svg><b id="coinNum">0</b></span>
+      <span class="chip"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5c-3.6 4.6-6 8-6 11a6 6 0 0 0 12 0c0-3-2.4-6.4-6-11z" fill="#8fd0f0"/></svg><span id="streakText">Sin racha todavía</span></span>
+      <span class="chip soft" id="waterText">Regadas hoy: 0 de 0</span>
+    </div>
+  </header>
+
+  <button id="menuBtn" class="iconbtn hidden" aria-label="Abrir tienda">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+  </button>
+
+  <button id="bagBtn" class="iconbtn bag hidden" aria-label="Abrir mochila">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8V6.5a4 4 0 0 1 8 0V8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M5 9.5A2 2 0 0 1 7 8h10a2 2 0 0 1 2 1.5l1 9A2.5 2.5 0 0 1 17.5 21h-11A2.5 2.5 0 0 1 4 18.5z" fill="currentColor"/><rect x="9" y="12" width="6" height="3.4" rx="1.2" fill="#fff" opacity=".8"/></svg>
+    <span class="badge hidden" id="bagCount">0</span>
+  </button>
+
+  <div id="modebar" class="hidden" role="status">
+    <span id="modeText"></span>
+    <button id="modeDone" class="btn small">Listo</button>
+  </div>
+
+  <div id="decorbar" class="hidden" role="toolbar" aria-label="Acciones de la decoración">
+    <button class="btn small" data-act="move">Mover</button>
+    <button class="btn small" data-act="rotate">Girar</button>
+    <button class="btn small ghost" data-act="store" aria-label="Guardar en la mochila">Guardar</button>
+    <button class="btn small ghost" data-act="close" aria-label="Cerrar">×</button>
+  </div>
+
+  <div id="scrim" class="hidden"></div>
+  <aside id="drawer" aria-hidden="true" aria-label="Tienda del jardín">
+    <div class="drawer-head">
+      <h2>Tienda</h2>
+      <span class="chip" id="drawerCoins"></span>
+      <button id="drawerClose" class="iconbtn small" aria-label="Cerrar tienda">×</button>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="tools" aria-selected="true">Herramientas</button>
+      <button role="tab" data-tab="seeds" aria-selected="false">Semillas</button>
+      <button role="tab" data-tab="decor" aria-selected="false">Decoración</button>
+      <button role="tab" data-tab="land" aria-selected="false">Terreno</button>
+    </nav>
+    <div id="drawerBody" class="drawer-body"></div>
+    <footer class="drawer-foot">
+      <button id="shareBtn" class="btn ghost">Compartir jardín</button>
+      <button id="bouquetBtn" class="btn ghost">Ver el ramo</button>
+    </footer>
+  </aside>
+
+  <section id="bag" class="hidden" aria-label="Mochila">
+    <header><h2>Mochila</h2><button id="bagClose" class="iconbtn small" aria-label="Cerrar mochila">×</button></header>
+    <div id="bagBody"></div>
+  </section>
+
+  <div id="toasts" aria-live="polite"></div>
+  <div id="floats" aria-hidden="true"></div>
+  <div id="saveState" aria-live="polite"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="js/models.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>

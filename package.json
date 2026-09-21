@@ -1,0 +1,13 @@
+{
+  "name": "nuestro-jardin",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Ramo 3D interactivo y jardín que crece al regarlo. Netlify + MongoDB Atlas.",
+  "scripts": {
+    "dev": "netlify dev"
+  },
+  "dependencies": {
+    "mongodb": "^6.8.0"
+  }
+}
