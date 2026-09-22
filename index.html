@@ -59,6 +59,7 @@
   <div id="decorbar" class="hidden" role="toolbar" aria-label="Acciones de la decoración">
     <button class="btn small" data-act="move">Mover</button>
     <button class="btn small" data-act="rotate">Girar</button>
+    <button class="btn small hidden" id="signBtn" data-act="text">Escribir</button>
     <button class="btn small ghost" data-act="store" aria-label="Guardar en la mochila">Guardar</button>
     <button class="btn small ghost" data-act="close" aria-label="Cerrar">×</button>
   </div>
@@ -79,7 +80,7 @@
     <div id="drawerBody" class="drawer-body"></div>
     <footer class="drawer-foot">
       <button id="shareBtn" class="btn ghost">Compartir jardín</button>
-      <button id="bouquetBtn" class="btn ghost">Ver el ramo</button>
+      <button id="resetBtn" class="btn ghost">Empezar de cero</button>
     </footer>
   </aside>
 
@@ -87,6 +88,18 @@
     <header><h2>Mochila</h2><button id="bagClose" class="iconbtn small" aria-label="Cerrar mochila">×</button></header>
     <div id="bagBody"></div>
   </section>
+
+  <div id="modal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-card">
+      <h2 id="modalTitle"></h2>
+      <p id="modalText"></p>
+      <input id="modalInput" class="hidden" type="text" maxlength="22" autocomplete="off" aria-labelledby="modalTitle">
+      <div class="modal-actions">
+        <button id="modalCancel" class="btn ghost">Cancelar</button>
+        <button id="modalOk" class="btn">Aceptar</button>
+      </div>
+    </div>
+  </div>
 
   <div id="toasts" aria-live="polite"></div>
   <div id="floats" aria-hidden="true"></div>

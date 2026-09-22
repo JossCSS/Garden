@@ -1,7 +1,7 @@
 /* game.js
- * Ramo 3D interactivo + jardín con economía, crecimiento diario, tienda,
- * mochila y decoraciones. Guarda en MongoDB a través de /api/garden
- * (Netlify Function) y en localStorage como respaldo.
+ * Ramo 3D (solo la primera vez) + jardín libre: flores en cualquier lugar, pasto que
+ * brota al regar, pala para quitar piedras, tienda, mochila, decoraciones y reinicio.
+ * Guarda en MongoDB por /api/garden (Netlify Function) y en el dispositivo como respaldo.
  */
 (() => {
   'use strict';
@@ -12,6 +12,9 @@
   const randInt = (a, b) => Math.floor(rand(a, b + 1));
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  const shuffle = (arr) => { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; };
+  const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) / 0.75;
+  const hash = (n) => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -22,68 +25,125 @@
     startGrid: 4,        // tamaño inicial del jardín (4 × 4)
     maxGrid: 6,          // tamaño máximo comprable
     maxHeight: 4,        // niveles extra de altura cuando el jardín está lleno
-    xp: [8, 18],         // XP aleatoria por riego
-    coins: [4, 12],      // monedas aleatorias por riego
+    slotsPerCell: 1.5,   // cuántas plantas caben por cada metro cuadrado de tierra
+    xp: [8, 18],         // XP aleatoria por flor regada
+    coins: [4, 12],      // monedas aleatorias por flor regada
     growth: 0.25,        // crecimiento por riego (4 riegos = flor adulta)
     startCoins: 60,
+    grassMax: 220,       // máximo de manchitas de pasto dentro del jardín
   };
   const LAND_PRICE = { 5: 150, 6: 320 };
 
   const SEEDS = [
-    { id: 'margarita', name: 'Margarita', price: 10, desc: 'Sencilla, blanca y alegre.' },
+    { id: 'margarita', name: 'Margarita', price: 10, desc: 'Sencilla y alegre.' },
+    { id: 'nube', name: 'Nube', price: 12, desc: 'Ramitas con bolitas diminutas.' },
     { id: 'tulipan', name: 'Tulipán', price: 15, desc: 'Pétalos cerrados como un abrazo.' },
-    { id: 'lavanda', name: 'Lavanda', price: 18, desc: 'Espigas moradas que huelen a calma.' },
-    { id: 'rosa', name: 'Rosa', price: 25, desc: 'La clásica, en rosa profundo.' },
+    { id: 'lavanda', name: 'Lavanda', price: 18, desc: 'Espigas que huelen a calma.' },
+    { id: 'campanilla', name: 'Campanilla', price: 20, desc: 'Tres campanitas colgando.' },
+    { id: 'cosmos', name: 'Cosmos', price: 22, desc: 'Pétalos anchos y onduladitos.' },
+    { id: 'rosa', name: 'Rosa', price: 25, desc: 'La clásica, en muchos colores.' },
+    { id: 'amapola', name: 'Amapola', price: 28, desc: 'Pétalos finos como papel.' },
+    { id: 'clavel', name: 'Clavel', price: 30, desc: 'Orillas rizadas y esponjosas.' },
     { id: 'girasol', name: 'Girasol', price: 30, desc: 'Alto y siempre buscando la luz.' },
-    { id: 'hortensia', name: 'Hortensia', price: 40, desc: 'Un pompón de florecitas lilas.' },
+    { id: 'hortensia', name: 'Hortensia', price: 40, desc: 'Un pompón de florecitas.' },
     { id: 'lirio', name: 'Lirio', price: 50, desc: 'Pétalos largos que se curvan.' },
     { id: 'peonia', name: 'Peonía', price: 65, desc: 'Llena de pétalos, suave como nube.' },
     { id: 'luna', name: 'Flor de luna', price: 120, desc: 'Brilla un poquito, incluso de día.' },
+    { id: 'cerezo', name: 'Cerezo', price: 150, desc: 'Árbol de flores rosas. Ocupa más espacio.' },
+    { id: 'jacaranda', name: 'Jacaranda', price: 170, desc: 'Árbol de flores moradas. Ocupa más espacio.' },
   ];
   const DECOR = [
+    { id: 'caminito', name: 'Caminito de piedras', price: 30, desc: 'Piedras planas para pisar.' },
     { id: 'rehilete', name: 'Rehilete', price: 35, desc: 'Gira solito con el viento.' },
     { id: 'hongo', name: 'Hongos', price: 40, desc: 'Una familia de hongos con lunares.' },
     { id: 'cerca', name: 'Cerquita blanca', price: 45, desc: 'Para marcar un rincón.' },
+    { id: 'arbusto', name: 'Arbusto florido', price: 55, desc: 'Redondito y con florecitas.' },
     { id: 'farolito', name: 'Farolito de papel', price: 60, desc: 'Brilla rosa y se mece.' },
-    { id: 'letrero', name: 'Letrero', price: 70, desc: 'Dice "Nuestro jardín".' },
+    { id: 'letrero', name: 'Letrero', price: 70, desc: 'Escríbele lo que tú quieras.' },
     { id: 'casita', name: 'Casita de pájaros', price: 85, desc: 'Por si llega alguien a cantar.' },
     { id: 'globo', name: 'Globo de corazón', price: 90, desc: 'Flota y se balancea.' },
     { id: 'banca', name: 'Banca', price: 120, desc: 'Para sentarse a ver crecer las flores.' },
     { id: 'farol', name: 'Farol de jardín', price: 140, desc: 'Luz cálida para la tarde.' },
+    { id: 'estanque', name: 'Estanque', price: 160, desc: 'Agua quieta con hojas flotando.' },
     { id: 'molino', name: 'Molino', price: 180, desc: 'Aspas de colores que no paran.' },
     { id: 'arco', name: 'Arco de flores', price: 220, desc: 'Una entrada llena de flores.' },
     { id: 'fuente', name: 'Fuente', price: 300, desc: 'Agua que salta sin parar.' },
   ];
   const seedInfo = (id) => SEEDS.find((s) => s.id === id);
   const decorInfo = (id) => DECOR.find((d) => d.id === id);
-  const BOUQUET_TYPES = ['rosa', 'peonia', 'tulipan', 'lirio', 'rosa', 'margarita', 'hortensia', 'lavanda', 'rosa'];
+  const isTree = (t) => Models.isTree(t);
+  const slotsOf = (t) => (isTree(t) ? 3 : 1);
+
+  // Ramo inicial: tipo y tono
+  const BOUQUET = [
+    ['rosa', 0], ['peonia', 0], ['rosa', 2], ['tulipan', 0], ['lirio', 0], ['hortensia', 1], ['rosa', 4],
+    ['margarita', 0], ['clavel', 0], ['lavanda', 0], ['cosmos', 0], ['peonia', 1], ['rosa', 0], ['tulipan', 3],
+    ['campanilla', 0], ['amapola', 2], ['hortensia', 0],
+  ];
 
   // Medidas del macetero
-  const TILE = 1, BASE_H = 0.14, DIRT_TOP = 0.78, FRAME_TOP = 0.88, FRAME_T = 0.14;
+  const BASE_H = 0.14, DIRT_TOP = 0.78, FRAME_TOP = 0.88, FRAME_T = 0.14;
   const BOUQUET_Y = 0.85;
 
   // =====================================================================
-  // Estado y guardado
+  // Estado
   // =====================================================================
   const fmtDay = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const today = () => fmtDay(new Date());
   const yesterday = () => { const d = new Date(); d.setDate(d.getDate() - 1); return fmtDay(d); };
+  const dayNum = () => Math.floor((Date.now() - new Date().getTimezoneOffset() * 60000) / 86400000);
 
-  function freshState() {
-    return {
-      v: 1, placed: false, coins: CFG.startCoins, xp: 0, level: 1, grid: CFG.startGrid, heightCap: 0,
-      streak: 0, lastWaterDay: null, plants: [], seeds: { margarita: 2 }, bag: {}, decor: [], nextId: 1, updatedAt: 0,
-    };
+  const halfOf = (n) => n / 2;
+  const baseHalfOf = (n) => halfOf(n) + FRAME_T + 0.3;
+
+  function genObstacles(s) {
+    const types = ['piedra', 'piedra', 'tronco', 'maleza', 'piedra', 'maleza', 'tronco', 'piedra', 'maleza', 'piedra', 'piedra', 'tronco'];
+    const out = [];
+    for (const type of types) {
+      for (let k = 0; k < 60; k++) {
+        const a = rand(0, Math.PI * 2), r = rand(baseHalfOf(s.grid) + 0.55, 5.4);
+        const x = Math.cos(a) * r, z = Math.sin(a) * r;
+        if (out.some((o) => Math.hypot(o.x - x, o.z - z) < 0.95)) continue;
+        out.push({ id: s.nextId++, type, x: +x.toFixed(2), z: +z.toFixed(2), s: +rand(0.8, 1.2).toFixed(2), r: +rand(0, 6.28).toFixed(2) });
+        break;
+      }
+    }
+    return out;
   }
-  function sanitize(s) {
-    const o = Object.assign(freshState(), s && typeof s === 'object' ? s : {});
+  function freshState() {
+    const s = {
+      v: 2, placed: false, coins: CFG.startCoins, xp: 0, level: 1, grid: CFG.startGrid, heightCap: 0,
+      streak: 0, lastWaterDay: null, plants: [], grass: [], seeds: { margarita: 2 }, bag: {}, decor: [],
+      obstacles: [], nextId: 1, updatedAt: 0,
+    };
+    s.obstacles = genObstacles(s);
+    return s;
+  }
+  function sanitize(src) {
+    const base = freshState();
+    const o = Object.assign(base, src && typeof src === 'object' ? src : {});
     o.grid = clamp(o.grid | 0, 3, CFG.maxGrid);
     o.heightCap = clamp(o.heightCap | 0, 0, CFG.maxHeight);
-    o.plants = (Array.isArray(o.plants) ? o.plants : []).filter((p) =>
-      p && Models.FLOWER_TYPES.includes(p.type) && p.i >= 0 && p.j >= 0 && p.i < o.grid && p.j < o.grid);
+    const h = halfOf(o.grid) - 0.15;
+    o.plants = (Array.isArray(o.plants) ? o.plants : []).filter((p) => p && Models.FLOWER_TYPES.includes(p.type)).map((p) => {
+      if (p.x == null && p.i != null) { // jardines de la versión con cuadritos
+        p.x = p.i - (o.grid - 1) / 2 + rand(-0.2, 0.2);
+        p.z = p.j - (o.grid - 1) / 2 + rand(-0.2, 0.2);
+        delete p.i; delete p.j;
+      }
+      p.x = clamp(+p.x || 0, -h, h); p.z = clamp(+p.z || 0, -h, h);
+      if (p.k == null) p.k = +rand(0.8, 1.25).toFixed(2);
+      if (p.v == null) p.v = +rand(0.35, 1).toFixed(2);
+      if (p.tone == null) p.tone = 0;
+      p.g = +p.g || 0.05;
+      return p;
+    });
+    o.grass = Array.isArray(o.grass) ? o.grass.slice(0, CFG.grassMax) : [];
     o.decor = (Array.isArray(o.decor) ? o.decor : []).filter((d) => d && Models.DECOR_TYPES.includes(d.type));
+    o.obstacles = Array.isArray(o.obstacles) ? o.obstacles : [];
     o.seeds = o.seeds && typeof o.seeds === 'object' ? o.seeds : {};
     o.bag = o.bag && typeof o.bag === 'object' ? o.bag : {};
+    o.v = 2;
     return o;
   }
 
@@ -166,12 +226,11 @@
 
   const scene = new THREE.Scene();
   scene.background = skyTexture();
-  scene.fog = new THREE.Fog('#f9d2df', 30, 85);
+  scene.fog = new THREE.Fog('#f9d2df', 26, 75);
 
   const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 200);
-  const INTRO_TARGET = new V3(0, 1.75, 0);
-  // en pantallas verticales (iPhone) alejamos la cámara para que quepa el ramo
-  const introCam = () => new V3(0, 2.3, 4.9 * Math.max(1, Math.pow(0.8 / (innerWidth / innerHeight), 0.7)));
+  const INTRO_TARGET = new V3(0, 1.8, 0);
+  const introCam = () => new V3(0, 2.4, 5.0 * Math.max(1, Math.pow(0.8 / (innerWidth / innerHeight), 0.7)));
   camera.position.copy(introCam());
 
   const controls = new THREE.OrbitControls(camera, canvas);
@@ -182,7 +241,7 @@
   controls.maxDistance = 12;
   controls.enablePan = false;
   controls.maxPolarAngle = 1.55;
-  controls.autoRotate = !reduceMotion;
+  controls.autoRotate = false;
   controls.autoRotateSpeed = 1.1;
   let idleTimer = null;
   controls.addEventListener('start', () => { controls.autoRotate = false; clearTimeout(idleTimer); });
@@ -212,28 +271,87 @@
   sun.shadow.normalBias = 0.02;
   scene.add(sun);
 
-  const ground = new THREE.Mesh(new THREE.CircleGeometry(80, 64), new THREE.MeshStandardMaterial({ color: '#f5bfd1', roughness: 1 }));
+  const ground = new THREE.Mesh(new THREE.CircleGeometry(90, 64), new THREE.MeshStandardMaterial({ color: '#f5bfd1', roughness: 1 }));
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   scene.add(ground);
 
-  // Colinas y arbustos lejanos
-  (function scenery() {
-    const cols = ['#f7a8c4', '#b8e2cf', '#f9c6d8', '#d9c7f2', '#fbd0dc'];
-    for (let i = 0; i < 16; i++) {
-      const a = (i / 16) * Math.PI * 2 + rand(-0.15, 0.15);
-      const d = rand(15, 28);
-      const g = new THREE.Group();
-      for (let k = 0; k < 3; k++) {
-        const s = new THREE.Mesh(Models.sphereGeo(1, 16, 12), Models.mat(pick(cols), { roughness: 1 }));
-        const r = rand(1.2, 2.6);
-        s.scale.set(r, r * 0.8, r);
-        s.position.set(rand(-1.5, 1.5), r * 0.25, rand(-1, 1));
-        g.add(s);
-      }
-      g.position.set(Math.cos(a) * d, 0, Math.sin(a) * d);
-      scene.add(g);
+  // ---------- Terreno de alrededor: pasto, flores silvestres, árboles, colinas ----------
+  const ambientTrees = [];
+  function instanced(geo, mat, n) {
+    const im = new THREE.InstancedMesh(geo, mat, n);
+    im.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3);
+    return im;
+  }
+  (function surroundings() {
+    const o = new THREE.Object3D(), col = new THREE.Color();
+    // colinas lejanas
+    const hills = ['#f7a8c4', '#b8e2cf', '#f9c6d8', '#d9c7f2', '#fbd0dc'];
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 14) * Math.PI * 2 + rand(-0.15, 0.15), d = rand(32, 44), r = rand(4, 7);
+      const s = new THREE.Mesh(Models.sphereGeo(1, 20, 14), Models.mat(pick(hills), { roughness: 1 }));
+      s.scale.set(r * 1.6, r * 0.7, r);
+      s.position.set(Math.cos(a) * d, -r * 0.15, Math.sin(a) * d);
+      s.rotation.y = -a;
+      scene.add(s);
     }
+    // pasto en matitas
+    const grassMat = new THREE.MeshStandardMaterial({ color: '#ffffff', side: THREE.DoubleSide, roughness: 0.9 });
+    const greens = ['#9ad7a8', '#b3e2b6', '#86c99a', '#c5ead0'];
+    const TU = 360, PER = 6;
+    const meadow = instanced(Models.grassGeo(), grassMat, TU * PER);
+    for (let i = 0; i < TU; i++) {
+      const a = rand(0, Math.PI * 2), r = 6 + Math.pow(Math.random(), 0.8) * 20;
+      const cx = Math.cos(a) * r, cz = Math.sin(a) * r, sc = rand(0.8, 1.4);
+      for (let k = 0; k < PER; k++) {
+        o.position.set(cx + rand(-0.12, 0.12) * sc, 0, cz + rand(-0.12, 0.12) * sc);
+        o.rotation.set(rand(-0.35, 0.35), rand(0, 6.28), 0);
+        o.scale.set(sc, sc * rand(0.6, 1.1), sc);
+        o.updateMatrix();
+        meadow.setMatrixAt(i * PER + k, o.matrix);
+        meadow.setColorAt(i * PER + k, col.set(pick(greens)));
+      }
+    }
+    scene.add(meadow);
+    // matitas de pasto cerca del jardín
+    const tufts = instanced(Models.grassGeo(), grassMat, 420);
+    for (let i = 0; i < 60; i++) {
+      const a = rand(0, Math.PI * 2), r = rand(3.2, 6);
+      const cx = Math.cos(a) * r, cz = Math.sin(a) * r;
+      for (let k = 0; k < 7; k++) {
+        o.position.set(cx + rand(-0.15, 0.15), 0, cz + rand(-0.15, 0.15));
+        o.rotation.set(rand(-0.3, 0.3), rand(0, 6.28), 0);
+        o.scale.set(1, rand(0.7, 1.3), 1);
+        o.updateMatrix();
+        tufts.setMatrixAt(i * 7 + k, o.matrix);
+        tufts.setColorAt(i * 7 + k, col.set(pick(greens)));
+      }
+    }
+    scene.add(tufts);
+    // flores silvestres
+    const F = 320;
+    const wild = instanced(Models.sphereGeo(0.05, 8, 6), new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.7 }), F);
+    const wcols = ['#ffffff', '#ffd166', '#ff9fc0', '#c9b3f0', '#ff7fa8', '#a8c4ff'];
+    for (let i = 0; i < F; i++) {
+      const a = rand(0, Math.PI * 2), r = rand(3.4, 22);
+      o.position.set(Math.cos(a) * r, 0.14, Math.sin(a) * r);
+      o.rotation.set(0, 0, 0);
+      o.scale.setScalar(rand(0.8, 1.4));
+      o.updateMatrix();
+      wild.setMatrixAt(i, o.matrix);
+      wild.setColorAt(i, col.set(pick(wcols)));
+    }
+    scene.add(wild);
+    // árboles lejanos
+    [[-8, -9, 'cerezo'], [10, -7.5, 'jacaranda'], [-12, 4, 'cerezo'], [12.5, 6, 'cerezo'], [-5, 12.5, 'jacaranda'], [6, 13, 'cerezo'], [0, -14, 'cerezo']].forEach(([x, z, t]) => {
+      const tr = Models.buildFlower(t, { tone: 0 });
+      tr.position.set(x, 0, z);
+      tr.scale.setScalar(rand(1.7, 2.3));
+      tr.rotation.y = rand(0, 6.28);
+      tr.traverse((m) => { if (m.isMesh) m.castShadow = false; });
+      scene.add(tr);
+      ambientTrees.push(tr);
+    });
   })();
 
   // Pétalos que flotan en el aire
@@ -252,9 +370,8 @@
     const x = c.getContext('2d');
     x.fillStyle = '#ffffff';
     x.beginPath(); x.ellipse(32, 32, 14, 24, 0.6, 0, Math.PI * 2); x.fill();
-    const tex = new THREE.CanvasTexture(c);
     const pts = new THREE.Points(geo, new THREE.PointsMaterial({
-      size: 0.16, map: tex, color: '#ff9fc0', transparent: true, depthWrite: false, opacity: 0.9,
+      size: 0.16, map: new THREE.CanvasTexture(c), color: '#ff9fc0', transparent: true, depthWrite: false, opacity: 0.9,
     }));
     pts.userData.vel = vel;
     scene.add(pts);
@@ -366,16 +483,17 @@
   }
 
   // =====================================================================
-  // Partículas: pétalos que saltan y gotas de agua
+  // Partículas: pétalos que saltan, tierra y gotas de agua
   // =====================================================================
   const bits = [];
   const burstGeo = Models.petalGeo(0.07, 0.1, 0.2, 0.1, 0.9);
-  function spawnBurst(p, color, n = 8) {
+  const clodGeo = new THREE.DodecahedronGeometry(0.04, 0);
+  function spawnBurst(p, color, n = 8, clod = false) {
     for (let i = 0; i < n; i++) {
-      const m = new THREE.Mesh(burstGeo, Models.pmat(color || '#ff9fc0'));
+      const m = new THREE.Mesh(clod ? clodGeo : burstGeo, clod ? Models.mat(color) : Models.pmat(color || '#ff9fc0'));
       m.position.copy(p);
       m.rotation.set(rand(0, 6), rand(0, 6), rand(0, 6));
-      m.userData = { v: new V3(rand(-1, 1), rand(0.8, 2), rand(-1, 1)), life: 1, spin: rand(-6, 6), g: 2.6, floor: -1 };
+      m.userData = { v: new V3(rand(-1, 1), rand(0.8, 2), rand(-1, 1)), life: 1, spin: rand(-6, 6), g: clod ? 5 : 2.6, floor: -1 };
       scene.add(m); bits.push(m);
     }
   }
@@ -401,56 +519,82 @@
   }
 
   // =====================================================================
-  // Ramo
+  // Ramo (más lleno: flores en domo, nube y helechos)
   // =====================================================================
   const bouquet = new THREE.Group();
   bouquet.position.y = BOUQUET_Y;
+  bouquet.visible = false;
   scene.add(bouquet);
   const bouquetFlowers = [];
   (function buildBouquet() {
     const layout = [
-      { a: 0, tilt: 0, h: 2.15 },
-      ...[0, 1, 2, 3, 4].map((i) => ({ a: (i / 5) * Math.PI * 2 + 0.3, tilt: 0.3, h: 2.0 })),
-      ...[0, 1, 2].map((i) => ({ a: (i / 3) * Math.PI * 2 + 1.2, tilt: 0.5, h: 1.75 })),
+      { a: 0, tilt: 0, h: 2.2 },
+      ...[0, 1, 2, 3, 4, 5].map((i) => ({ a: (i / 6) * Math.PI * 2 + 0.2, tilt: 0.2, h: 2.1 })),
+      ...[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => ({ a: (i / 10) * Math.PI * 2 + 0.5, tilt: 0.4, h: 1.92 })),
     ];
     layout.forEach((l, i) => {
+      const [type, tone] = BOUQUET[i];
       const holder = new THREE.Group();
       holder.rotation.y = l.a;
-      const f = Models.buildFlower(BOUQUET_TYPES[i], { stemH: l.h, noLeaves: true, headScale: 1.45 });
-      f.rotation.x = l.tilt;
+      const hs = { hortensia: 1.05, lavanda: 1.3, campanilla: 1.35 }[type] || 1.5;
+      const f = Models.buildFlower(type, { stemH: l.h + rand(-0.05, 0.05), noLeaves: true, headScale: hs, tone });
+      f.rotation.x = l.tilt + rand(-0.04, 0.04);
       f.position.y = -0.62;
       holder.add(f);
       bouquet.add(holder);
       bouquetFlowers.push(f);
     });
-    // envoltura de papel con una abertura al frente
+    // relleno: nube (gypsophila) entre las flores
+    for (let i = 0; i < 9; i++) {
+      const holder = new THREE.Group();
+      holder.rotation.y = (i / 9) * Math.PI * 2 + 0.15;
+      const f = Models.buildFlower('nube', { stemH: 1.95, noLeaves: true, headScale: 1.15 });
+      f.rotation.x = 0.33 + (i % 2) * 0.12;
+      f.position.y = -0.62;
+      holder.add(f);
+      bouquet.add(holder);
+      bouquetFlowers.push(f);
+    }
+    // helechos asomándose por la orilla
+    for (let i = 0; i < 8; i++) {
+      const holder = new THREE.Group();
+      holder.rotation.y = (i / 8) * Math.PI * 2 + 0.4;
+      const fern = Models.buildFern();
+      fern.rotation.x = 0.55;
+      fern.position.set(0, 0.62, 0.72);
+      holder.add(fern);
+      bouquet.add(holder);
+    }
+    // envoltura de papel con abertura al frente
     const gap = 0.9;
-    const wrapGeo = new THREE.CylinderGeometry(0.88, 0.08, 1.5, 36, 6, true, gap / 2, Math.PI * 2 - gap);
+    const wrapGeo = new THREE.CylinderGeometry(1.0, 0.1, 1.55, 40, 6, true, gap / 2, Math.PI * 2 - gap);
     const p = wrapGeo.attributes.position;
     for (let i = 0; i < p.count; i++) {
       const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
       const a = Math.atan2(x, z);
-      const k = 1 + Math.sin(a * 9 + y * 3) * 0.035 * (y + 0.75);
-      p.setXYZ(i, x * k, y + (y > 0.7 ? Math.sin(a * 5) * 0.06 : 0), z * k);
+      const k = 1 + Math.sin(a * 9 + y * 3) * 0.035 * (y + 0.78);
+      p.setXYZ(i, x * k, y + (y > 0.7 ? Math.sin(a * 5) * 0.07 : 0), z * k);
     }
     wrapGeo.computeVertexNormals();
     const wrap = new THREE.Mesh(wrapGeo, Models.pmat('#f7a8c2', { roughness: 0.8 }));
     wrap.position.y = 0.05;
-    const inner = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.07, 1.4, 30, 1, true), Models.pmat('#fff4f8', { roughness: 0.9 }));
+    const inner = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.08, 1.45, 34, 1, true), Models.pmat('#fff4f8', { roughness: 0.9 }));
     inner.position.y = 0.08;
-    bouquet.add(wrap, inner);
-    // listón y moño
+    // segunda capa de papel, rosa pálido, un poco más alta
+    const layer = new THREE.Mesh(new THREE.CylinderGeometry(1.08, 0.12, 1.3, 36, 1, true, Math.PI - 0.9, 1.8), Models.pmat('#fbd0dc', { roughness: 0.85 }));
+    layer.position.y = 0.2;
+    bouquet.add(wrap, inner, layer);
     const rib = Models.mat('#a23b6b', { roughness: 0.35 });
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.035, 8, 30), rib);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.035, 8, 30), rib);
     ring.rotation.x = Math.PI / 2; ring.position.y = -0.3;
     bouquet.add(ring);
     const bow = new THREE.Group();
-    bow.position.set(0, -0.3, 0.3);
+    bow.position.set(0, -0.3, 0.32);
     [-1, 1].forEach((s) => {
-      const loop = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.035, 8, 20), rib);
-      loop.scale.set(1, 0.6, 1); loop.position.x = s * 0.13; loop.rotation.z = s * 0.35;
-      const tail = new THREE.Mesh(Models.boxGeo(0.07, 0.34, 0.015), rib);
-      tail.position.set(s * 0.07, -0.18, 0.01); tail.rotation.z = s * 0.3;
+      const loop = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.035, 8, 20), rib);
+      loop.scale.set(1, 0.6, 1); loop.position.x = s * 0.14; loop.rotation.z = s * 0.35;
+      const tail = new THREE.Mesh(Models.boxGeo(0.07, 0.36, 0.015), rib);
+      tail.position.set(s * 0.07, -0.19, 0.01); tail.rotation.z = s * 0.3;
       bow.add(loop, tail);
     });
     bow.add(new THREE.Mesh(Models.sphereGeo(0.05), rib));
@@ -466,19 +610,19 @@
   garden.visible = false;
   scene.add(garden);
   let planter = null;
-  let tiles = [];
+  let bed = null;
   const plantsGroup = new THREE.Group();
   const decorGroup = new THREE.Group();
-  garden.add(plantsGroup, decorGroup);
+  const obstGroup = new THREE.Group();
+  garden.add(plantsGroup, decorGroup, obstGroup);
   const plantObjs = new Map();
   const decorObjs = new Map();
 
-  const half = () => (state.grid * TILE) / 2;
-  const baseHalf = () => half() + FRAME_T + 0.3;
-  const tilePos = (i, j) => new V3((i - (state.grid - 1) / 2) * TILE, DIRT_TOP, (j - (state.grid - 1) / 2) * TILE);
-  const tileAt = (i, j) => tiles.find((t) => t.userData.i === i && t.userData.j === j);
-  const plantAt = (i, j) => state.plants.find((p) => p.i === i && p.j === j);
-  const emptyTiles = () => tiles.filter((t) => !plantAt(t.userData.i, t.userData.j));
+  const half = () => halfOf(state.grid);
+  const baseHalf = () => baseHalfOf(state.grid);
+  const capacity = () => Math.floor(state.grid * state.grid * CFG.slotsPerCell);
+  const usedSlots = () => state.plants.reduce((a, p) => a + slotsOf(p.type), 0);
+  const maxG = (p) => 1 + state.heightCap * p.v;
 
   function yAt(x, z) {
     const ax = Math.abs(x), az = Math.abs(z), h = half();
@@ -487,24 +631,47 @@
     if (ax <= baseHalf() && az <= baseHalf()) return BASE_H;
     return 0;
   }
+  function spotFree(x, z, type, ignoreId) {
+    for (const p of state.plants) {
+      if (p.id === ignoreId) continue;
+      const need = isTree(type) || isTree(p.type) ? 0.85 : 0.3;
+      if (Math.hypot(p.x - x, p.z - z) < need) return false;
+    }
+    return true;
+  }
+  function findSpot(type, near) {
+    const h = half() - (isTree(type) ? 0.45 : 0.2);
+    for (let k = 0; k < 90; k++) {
+      let x, z;
+      if (near && Math.random() < 0.75) { x = near.x + gauss() * near.s; z = near.z + gauss() * near.s; }
+      else { x = rand(-h, h); z = rand(-h, h); }
+      if (Math.abs(x) > h || Math.abs(z) > h) continue;
+      if (spotFree(x, z, type)) return { x, z };
+    }
+    return null;
+  }
+  function newPlant(type, x, z, g, tone) {
+    return {
+      id: state.nextId++, type, tone: tone != null ? tone : randInt(0, Models.toneCount(type) - 1),
+      x: +x.toFixed(2), z: +z.toFixed(2), g, w: null,
+      k: +rand(0.8, 1.25).toFixed(2), v: +rand(0.35, 1).toFixed(2),
+    };
+  }
 
   function buildPlanter() {
     if (planter) {
       garden.remove(planter);
-      tiles.forEach((t) => t.material.dispose());
+      if (bed) bed.material.map.dispose();
     }
     planter = new THREE.Group();
-    tiles = [];
-    const n = state.grid, h = half(), inner = n * TILE;
+    const n = state.grid, h = half(), inner = n;
     const woods = ['#c98d5e', '#bf8455', '#d39a6a'];
-    // tablones de abajo
     const bw = baseHalf() * 2, board = 0.3, count = Math.ceil(bw / board);
     for (let i = 0; i < count; i++) {
       const b = new THREE.Mesh(Models.boxGeo(bw, BASE_H, board - 0.035), Models.woodMat(woods[i % 3]));
       b.position.set(0, BASE_H / 2, -bw / 2 + board * (i + 0.5));
       planter.add(b);
     }
-    // costados: dos tablones por lado
     const fh = (FRAME_TOP - BASE_H) / 2;
     for (let lvl = 0; lvl < 2; lvl++) {
       const y = BASE_H + fh * (lvl + 0.5);
@@ -516,59 +683,126 @@
         planter.add(ns, ew);
       });
     }
-    // postes en las esquinas
     [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([sx, sz]) => {
       const p = new THREE.Mesh(Models.boxGeo(FRAME_T + 0.05, FRAME_TOP - BASE_H + 0.06, FRAME_T + 0.05), Models.woodMat('#a86f45'));
       p.position.set(sx * (h + FRAME_T / 2), BASE_H + (FRAME_TOP - BASE_H + 0.06) / 2, sz * (h + FRAME_T / 2));
       planter.add(p);
     });
-    // relleno de tierra
-    const fillH = DIRT_TOP - 0.1 - BASE_H;
+    const fillH = DIRT_TOP - 0.03 - BASE_H;
     const fill = new THREE.Mesh(Models.boxGeo(inner, fillH, inner), Models.mat('#6e4a31', { roughness: 1 }));
     fill.position.y = BASE_H + fillH / 2;
     planter.add(fill);
-    // cuadros de tierra (donde se planta)
-    for (let i = 0; i < n; i++) {
-      for (let j = 0; j < n; j++) {
-        const t = new THREE.Mesh(Models.boxGeo(TILE * 0.94, 0.12, TILE * 0.94), Models.dirtMat());
-        const p = tilePos(i, j);
-        t.position.set(p.x, DIRT_TOP - 0.06, p.z);
-        t.userData = { kind: 'tile', i, j, wet: 0 };
-        planter.add(t);
-        tiles.push(t);
-      }
+    // una sola superficie de tierra, con relieve suave (sin cuadritos)
+    const g = new THREE.PlaneGeometry(inner, inner, n * 8, n * 8);
+    g.rotateX(-Math.PI / 2);
+    const pos = g.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i), z = pos.getZ(i);
+      const edge = Math.min(h - Math.abs(x), h - Math.abs(z));
+      const k = Math.min(1, edge / 0.25);
+      pos.setY(i, (Math.sin(x * 3.1) * Math.cos(z * 2.7) * 0.012 + Math.sin(x * 7 + z * 5) * 0.006) * k);
     }
-    planter.traverse((o) => { if (o.isMesh) { o.receiveShadow = true; o.castShadow = o.userData.kind !== 'tile'; } });
+    g.computeVertexNormals();
+    const m = Models.dirtMat();
+    m.map.repeat.set(n * 0.8, n * 0.8);
+    bed = new THREE.Mesh(g, m);
+    bed.position.y = DIRT_TOP;
+    bed.userData.kind = 'bed';
+    bed.receiveShadow = true;
+    planter.add(bed);
+    planter.traverse((o) => { if (o.isMesh) { o.receiveShadow = true; o.castShadow = o !== bed; } });
     garden.add(planter);
   }
 
-  function growthLook(g) {
-    return { size: 0.3 + 0.7 * Math.min(g, 1), stretch: 1 + 0.32 * Math.max(0, g - 1) };
+  // ---------- Pasto que brota al regar ----------
+  const GRASS_BLADES = 12;
+  const grassIM = instanced(Models.grassGeo(), new THREE.MeshStandardMaterial({ color: '#ffffff', side: THREE.DoubleSide, roughness: 0.9 }), CFG.grassMax * GRASS_BLADES);
+  grassIM.count = 0;
+  grassIM.frustumCulled = false;
+  grassIM.receiveShadow = true;
+  garden.add(grassIM);
+  const grassGreens = ['#7fc98f', '#9ad7a8', '#6bb77f', '#b3e2b6'];
+  const grassGrowth = (p) => Math.min(1, 0.4 + Math.max(0, dayNum() - p.d) * 0.12 + (p.n - 1) * 0.12);
+  function rebuildGrass() {
+    const o = new THREE.Object3D(), col = new THREE.Color();
+    let i = 0;
+    for (const p of state.grass) {
+      const gg = grassGrowth(p);
+      for (let b = 0; b < GRASS_BLADES; b++) {
+        const seed = p.s * 31 + b;
+        const ang = hash(seed) * 6.283, r = Math.sqrt(hash(seed + 1)) * (0.12 + gg * 0.12);
+        o.position.set(p.x + Math.cos(ang) * r, DIRT_TOP, p.z + Math.sin(ang) * r);
+        o.rotation.set((hash(seed + 2) - 0.5) * 0.6, hash(seed + 3) * 6.28, 0);
+        const hgt = (0.3 + 0.7 * gg) * (0.6 + hash(seed + 4) * 0.6);
+        o.scale.set(0.9, hgt, 0.9);
+        o.updateMatrix();
+        grassIM.setMatrixAt(i, o.matrix);
+        grassIM.setColorAt(i, col.set(grassGreens[Math.floor(hash(seed + 5) * 4)]));
+        i++;
+      }
+    }
+    grassIM.count = i;
+    grassIM.instanceMatrix.needsUpdate = true;
+    grassIM.instanceColor.needsUpdate = true;
   }
-  function applyGrowth(obj, g, animate) {
-    const { size, stretch } = growthLook(g);
+  function addGrass(pt) {
+    const h = half() - 0.08;
+    const x = clamp(pt.x + rand(-0.12, 0.12), -h, h), z = clamp(pt.z + rand(-0.12, 0.12), -h, h);
+    const near = state.grass.find((g) => Math.hypot(g.x - x, g.z - z) < 0.26);
+    if (near) { near.n = Math.min(10, near.n + 1); rebuildGrass(); return false; }
+    if (state.grass.length >= CFG.grassMax) return false;
+    state.grass.push({ x: +x.toFixed(2), z: +z.toFixed(2), d: dayNum(), n: 1, s: randInt(1, 999999) });
+    rebuildGrass();
+    return true;
+  }
+
+  // ---------- Manchas de tierra mojada ----------
+  const wets = [];
+  const wetGeo = new THREE.CircleGeometry(0.42, 24);
+  function wetSpot(p) {
+    const m = new THREE.Mesh(wetGeo, new THREE.MeshBasicMaterial({ color: '#3d2618', transparent: true, opacity: 0.35, depthWrite: false }));
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(p.x, DIRT_TOP + 0.025, p.z);
+    m.userData.life = 1;
+    garden.add(m); wets.push(m);
+  }
+  function updateWets(dt) {
+    for (let i = wets.length - 1; i >= 0; i--) {
+      const m = wets[i];
+      m.userData.life -= dt / 12;
+      m.material.opacity = 0.35 * Math.max(0, m.userData.life);
+      if (m.userData.life <= 0) { garden.remove(m); m.material.dispose(); wets.splice(i, 1); }
+    }
+  }
+
+  // ---------- Plantas, decoraciones y obstáculos ----------
+  function growthLook(p) {
+    return { size: (0.3 + 0.7 * Math.min(p.g, 1)) * p.k, stretch: 1 + 0.32 * Math.max(0, p.g - 1) };
+  }
+  function applyGrowth(obj, p, animate) {
+    const { size, stretch } = growthLook(p);
     const s0 = obj.scale.x, st0 = obj.userData.stem.scale.y;
     obj.userData.baseScale = size;
     if (!animate) { obj.scale.setScalar(size); Models.setStemStretch(obj, stretch); return Promise.resolve(); }
     return tween(0.7, (k) => {
-      obj.scale.setScalar(s0 + (size - s0) * k);
+      obj.scale.setScalar(Math.max(0.01, s0 + (size - s0) * k));
       Models.setStemStretch(obj, st0 + (stretch - st0) * k);
     }, ease.outBack);
   }
   function spawnPlant(p, animate) {
-    const f = Models.buildFlower(p.type);
-    f.userData.i = p.i; f.userData.j = p.j; f.userData.plantId = p.id;
-    f.position.copy(tilePos(p.i, p.j));
-    f.rotation.y = rand(0, Math.PI * 2);
+    const f = Models.buildFlower(p.type, { tone: p.tone });
+    f.userData.plantId = p.id;
+    f.position.set(p.x, DIRT_TOP, p.z);
+    f.rotation.y = hash(p.id) * Math.PI * 2;
     f.traverse((o) => { if (o.isMesh) o.castShadow = true; });
     plantsGroup.add(f);
     plantObjs.set(p.id, f);
-    if (animate) { f.scale.setScalar(0.01); Models.setStemStretch(f, 1); applyGrowth(f, p.g, true); }
-    else applyGrowth(f, p.g, false);
+    if (animate) { f.scale.setScalar(0.01); applyGrowth(f, p, true); }
+    else applyGrowth(f, p, false);
     return f;
   }
   function spawnDecor(d, animate) {
-    const o = Models.buildDecor(d.type);
+    const o = Models.buildDecor(d.type, { text: d.text || '' });
     o.userData.decorId = d.id;
     o.userData.sq = { a: 0, v: 0 };
     o.userData.baseScale = 1;
@@ -579,21 +813,42 @@
     if (animate) { o.userData.sq.v = 6; springy.add(o); }
     return o;
   }
+  function spawnObstacle(ob) {
+    const o = Models.buildObstacle(ob.type);
+    o.userData.obstId = ob.id;
+    o.userData.sq = { a: 0, v: 0 };
+    o.userData.baseScale = ob.s;
+    o.position.set(ob.x, 0, ob.z);
+    o.rotation.y = ob.r;
+    o.scale.setScalar(ob.s);
+    obstGroup.add(o);
+    return o;
+  }
   function rebuildGarden() {
     buildPlanter();
     plantsGroup.clear(); plantObjs.clear();
     decorGroup.clear(); decorObjs.clear();
+    obstGroup.clear();
     state.plants.forEach((p) => spawnPlant(p, false));
     state.decor.forEach((d) => spawnDecor(d, false));
+    state.obstacles.forEach((o) => spawnObstacle(o));
+    rebuildGrass();
   }
-  function repositionAll() {
-    state.plants.forEach((p) => { const o = plantObjs.get(p.id); if (o) o.position.copy(tilePos(p.i, p.j)); });
-    state.decor.forEach((d) => { const o = decorObjs.get(d.id); if (o) o.position.y = yAt(d.x, d.z); });
+  function blockingObstacles(n) {
+    const lim = baseHalfOf(n) + 0.35;
+    return state.obstacles.filter((o) => Math.abs(o.x) < lim && Math.abs(o.z) < lim);
+  }
+  function obstacleNear(x, z) {
+    return state.obstacles.find((o) => Math.hypot(o.x - x, o.z - z) < 0.45 * o.s + 0.3);
   }
 
+  // ---------- Herramientas ----------
   const can = Models.buildCan();
   can.visible = false;
   scene.add(can);
+  const shovel = Models.buildShovel();
+  shovel.visible = false;
+  scene.add(shovel);
 
   const selRing = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.66, 40), new THREE.MeshBasicMaterial({ color: '#8fd3b6', transparent: true, opacity: 0.85, side: THREE.DoubleSide }));
   selRing.rotation.x = -Math.PI / 2;
@@ -604,15 +859,16 @@
   // Vista, modos y cámara
   // =====================================================================
   let view = 'loading';        // loading | intro | garden
-  let mode = 'view';           // view | water | plant | place | move
+  let mode = 'view';           // view | water | shovel | plant | place | move
   let modeData = null;
   let busy = false;
+  let toolBusy = false;
   let selected = null;
 
   function gardenCam() {
     const n = state.grid;
     const k = Math.max(1, Math.pow(1.1 / (innerWidth / innerHeight), 0.42));
-    return new V3(n * 0.95 + 2.2, n * 0.9 + 2.6, n * 1.1 + 3.4).multiplyScalar(k);
+    return new V3(n * 0.95 + 2.6, n * 0.9 + 3.0, n * 1.1 + 3.9).multiplyScalar(k);
   }
   function setGardenControls() {
     controls.enablePan = true;
@@ -620,6 +876,12 @@
     controls.maxDistance = 40;
     controls.maxPolarAngle = 1.42;
     controls.autoRotate = false;
+  }
+  function setIntroControls() {
+    controls.enablePan = false;
+    controls.minDistance = 2.2;
+    controls.maxDistance = 12;
+    controls.maxPolarAngle = 1.55;
   }
   function flyCamera(to, target, dur = 1.1) {
     const cf = camera.position.clone(), tf = controls.target.clone();
@@ -629,32 +891,29 @@
   function setMode(m, data = null) {
     mode = m; modeData = data;
     can.visible = m === 'water';
-    if (m === 'water') { const c = new V3(0, DIRT_TOP + 1.2, 0); can.position.copy(c); can.rotation.set(0, 0, 0); }
+    shovel.visible = m === 'shovel';
+    if (m === 'water') { can.position.set(0, DIRT_TOP + 1.2, 0); can.rotation.set(0, 0, 0); }
+    if (m === 'shovel') { shovel.position.set(0.3, DIRT_TOP + 0.5, 0.3); shovel.rotation.set(0, 0, 0.35); }
     controls.enabled = m !== 'move';
     if (m !== 'move' && m !== 'view') selectDecor(null);
     $('#modebar').classList.toggle('hidden', m === 'view');
     $('#decorbar').classList.toggle('hidden', !(m === 'view' && selected));
     document.body.dataset.mode = m;
     updateModeText();
-    refreshTileHints();
   }
   function updateModeText() {
     const t = $('#modeText');
-    if (mode === 'water') t.textContent = 'Toca tus flores para regarlas';
-    else if (mode === 'plant') t.textContent = `Toca un cuadro vacío para plantar: ${seedInfo(modeData).name} (te quedan ${state.seeds[modeData] || 0})`;
+    if (mode === 'water') t.textContent = 'Toca tus flores o la tierra para regar';
+    else if (mode === 'shovel') t.textContent = 'Toca piedras, troncos o maleza para quitarlos';
+    else if (mode === 'plant') t.textContent = `Toca la tierra para plantar: ${seedInfo(modeData).name} (te quedan ${state.seeds[modeData] || 0})`;
     else if (mode === 'place') t.textContent = `Toca el suelo para colocar: ${decorInfo(modeData).name}`;
     else if (mode === 'move') t.textContent = 'Arrastra en la pantalla para moverla';
-  }
-  function refreshTileHints() {
-    tiles.forEach((t) => {
-      const on = mode === 'plant' && !plantAt(t.userData.i, t.userData.j);
-      t.material.emissive.set(on ? '#ff9fc0' : '#000000');
-      t.material.emissiveIntensity = on ? 0.2 : 0;
-    });
   }
   function selectDecor(o) {
     selected = o;
     selRing.visible = !!o;
+    const isSign = !!o && o.userData.type === 'letrero';
+    $('#signBtn').classList.toggle('hidden', !isSign);
     $('#decorbar').classList.toggle('hidden', !o || mode !== 'view');
   }
 
@@ -673,20 +932,29 @@
   function levelUp() {
     const bonus = 15 + state.level * 5;
     state.coins += bonus;
-    const empty = emptyTiles();
-    if (empty.length) {
-      const t = pick(empty);
-      const type = pick(SEEDS.filter((s) => s.price <= 50)).id;
-      const p = { id: state.nextId++, type, i: t.userData.i, j: t.userData.j, g: 0.15, w: null };
+    const parts = [`¡Nivel ${state.level}! Ganaste ${bonus} monedas`];
+    // solo unas cuantas flores dan un estirón
+    const growable = shuffle(state.plants.filter((p) => p.g < maxG(p)));
+    const lucky = growable.slice(0, Math.min(growable.length, randInt(2, 3)));
+    lucky.forEach((p, i) => {
+      p.g = Math.min(p.g + 0.35, maxG(p));
+      const o = plantObjs.get(p.id);
+      if (o) setTimeout(() => { applyGrowth(o, p, true); spawnBurst(o.position.clone().add(new V3(0, 0.9, 0)), '#fff4a8', 6); }, 700 + i * 250);
+    });
+    if (lucky.length) parts.push(`${lucky.length === 1 ? 'una flor dio' : `${lucky.length} flores dieron`} un estirón`);
+    // brota una flor nueva si hay espacio
+    const type = pick(SEEDS.filter((s) => s.price <= 50)).id;
+    const spot = usedSlots() + 1 <= capacity() ? findSpot(type) : null;
+    if (spot) {
+      const p = newPlant(type, spot.x, spot.z, 0.15);
       state.plants.push(p);
-      setTimeout(() => { spawnPlant(p, true); spawnBurst(tilePos(p.i, p.j).add(new V3(0, 0.3, 0)), Models.flowerColor(type), 12); }, 900);
-      toast(`¡Nivel ${state.level}! Brotó una flor nueva (${seedInfo(type).name}) y ganaste ${bonus} monedas.`);
+      setTimeout(() => { spawnPlant(p, true); spawnBurst(new V3(p.x, DIRT_TOP + 0.3, p.z), Models.flowerColor(type, p.tone), 12); }, 1200);
+      parts.push(`brotó una ${seedInfo(type).name.toLowerCase()}`);
     } else if (state.heightCap < CFG.maxHeight) {
       state.heightCap++;
-      toast(`¡Nivel ${state.level}! Tu jardín está lleno, así que ahora tus flores pueden crecer más alto.`);
-    } else {
-      toast(`¡Nivel ${state.level}! Ganaste ${bonus} monedas.`);
+      parts.push('tus flores ya pueden crecer más alto');
     }
+    toast(parts.join(', ') + '.');
   }
   function streakMultiplier() {
     const t = today();
@@ -698,7 +966,6 @@
     return 1 + Math.min(state.streak - 1, 6) * 0.1;
   }
 
-  let canBusy = false;
   async function pourAt(p) {
     const from = can.position.clone();
     const to = p.clone().add(new V3(-0.5, 1.15, 0));
@@ -715,64 +982,142 @@
     });
     await tween(0.22, (k) => { can.rotation.z = -0.75 * (1 - k); });
   }
-  async function waterTile(tile) {
-    if (canBusy) return;
-    canBusy = true;
-    const { i, j } = tile.userData;
-    const tp = tilePos(i, j);
-    await pourAt(tp);
-    tile.userData.wet = 1;
-    const plant = plantAt(i, j);
-    if (plant) {
-      const obj = plantObjs.get(plant.id);
-      const head = tp.clone().add(new V3(0, 1.1, 0));
-      if (plant.w === today()) {
-        floatText(head, 'Ya bebió agua hoy', 'muted');
-        if (obj) pokeFlower(obj, null, null);
-      } else {
-        const mult = streakMultiplier();
-        const xp = Math.round(randInt(CFG.xp[0], CFG.xp[1]) * mult);
-        const coins = randInt(CFG.coins[0], CFG.coins[1]);
-        plant.w = today();
-        plant.g = Math.min(plant.g + CFG.growth, 1 + state.heightCap);
-        state.coins += coins;
-        floatText(head, `+${xp} XP`, 'xp');
-        setTimeout(() => floatText(head.clone().add(new V3(0, -0.3, 0)), `+${coins}`, 'coin'), 220);
-        if (obj) { applyGrowth(obj, plant.g, true); pokeFlower(obj, null, head); }
-        addXP(xp);
-        renderHUD();
-        save();
-      }
+  async function waterAt(pt) {
+    if (toolBusy) return;
+    toolBusy = true;
+    await pourAt(pt);
+    wetSpot(pt);
+    const sprouted = addGrass(pt);
+    const t = today();
+    const near = state.plants.filter((p) => Math.hypot(p.x - pt.x, p.z - pt.z) < (isTree(p.type) ? 0.8 : 0.5));
+    let xp = 0, coins = 0, already = 0;
+    let mult = null;
+    for (const p of near) {
+      const obj = plantObjs.get(p.id);
+      if (obj) pokeFlower(obj, null, null);
+      if (p.w === t) { already++; continue; }
+      if (mult == null) mult = streakMultiplier();
+      xp += Math.round(randInt(CFG.xp[0], CFG.xp[1]) * mult);
+      coins += randInt(CFG.coins[0], CFG.coins[1]);
+      p.w = t;
+      p.g = Math.min(p.g + CFG.growth, maxG(p));
+      if (obj) applyGrowth(obj, p, true);
     }
-    canBusy = false;
+    const head = pt.clone().add(new V3(0, 1.1, 0));
+    if (xp) {
+      state.coins += coins;
+      floatText(head, `+${xp} XP`, 'xp');
+      setTimeout(() => floatText(head.clone().add(new V3(0, -0.3, 0)), `+${coins}`, 'coin'), 220);
+      addXP(xp);
+    } else if (already) {
+      floatText(head, already === 1 ? 'Ya bebió agua hoy' : 'Ya bebieron agua hoy', 'muted');
+    } else if (sprouted) {
+      floatText(head, 'Brotó pastito', 'xp');
+    }
+    renderHUD();
+    save();
+    toolBusy = false;
   }
-  function plantSeed(tile) {
-    const { i, j } = tile.userData;
+
+  async function shovelDig(p, times = 1) {
+    const from = shovel.position.clone();
+    const above = new V3(p.x + 0.12, p.y + 0.75, p.z + 0.12);
+    await tween(0.28, (k) => shovel.position.lerpVectors(from, above, k));
+    for (let i = 0; i < times; i++) {
+      await tween(0.16, (k) => { shovel.position.y = above.y - k * 0.6; shovel.rotation.z = 0.35 - k * 0.3; }, ease.inCubic);
+      spawnBurst(new V3(p.x, p.y + 0.05, p.z), '#7a5236', 7, true);
+      await tween(0.22, (k) => { shovel.position.y = above.y - 0.6 + k * 0.6; shovel.rotation.z = 0.05 + k * 0.5; });
+    }
+    shovel.rotation.z = 0.35;
+  }
+  async function digObstacle(o) {
+    const ob = state.obstacles.find((x) => x.id === o.userData.obstId);
+    if (!ob) return;
+    toolBusy = true;
+    await shovelDig(o.position.clone(), 2);
+    const s0 = o.scale.x;
+    await tween(0.35, (k) => { o.scale.setScalar(Math.max(0.01, s0 * (1 - k))); o.position.y = -k * 0.2; }, ease.inCubic);
+    obstGroup.remove(o);
+    state.obstacles = state.obstacles.filter((x) => x !== ob);
+    const coins = randInt(3, 10);
+    state.coins += coins;
+    const head = new V3(ob.x, 1, ob.z);
+    floatText(head, `+${coins}`, 'coin');
+    if (Math.random() < 0.3) {
+      const s = pick(SEEDS.filter((x) => x.price <= 30));
+      state.seeds[s.id] = (state.seeds[s.id] || 0) + 1;
+      setTimeout(() => floatText(head.clone().add(new V3(0, -0.35, 0)), `Encontraste una semilla: ${s.name}`, 'xp'), 250);
+      bumpBag();
+    }
+    renderHUD(); renderShop(); renderBag(); save();
+    toolBusy = false;
+  }
+  async function shovelTap(e) {
+    if (toolBusy) return;
+    const h = hit(e, [obstGroup]);
+    const o = h && ownerOf(h.object);
+    if (o && o.userData.kind === 'obstacle') { await digObstacle(o); return; }
+    const bh = bed && hit(e, [bed]);
+    if (bh) {
+      const gi = state.grass.findIndex((g) => Math.hypot(g.x - bh.point.x, g.z - bh.point.z) < 0.3);
+      toolBusy = true;
+      await shovelDig(bh.point);
+      if (gi >= 0) { state.grass.splice(gi, 1); rebuildGrass(); floatText(bh.point.clone().add(new V3(0, 0.6, 0)), 'Quitaste el pasto', 'muted'); save(); }
+      toolBusy = false;
+      return;
+    }
+    const gp = groundPoint(e, 0);
+    if (gp && gp.length() < 12) { toolBusy = true; await shovelDig(gp); toolBusy = false; }
+  }
+
+  function plantSeedAt(pt) {
     const type = modeData;
-    if (plantAt(i, j)) { floatText(tilePos(i, j).add(new V3(0, 0.8, 0)), 'Ese cuadro ya tiene flor', 'muted'); return; }
     if (!(state.seeds[type] > 0)) { setMode('view'); return; }
+    const head = pt.clone().add(new V3(0, 0.7, 0));
+    const edge = half() - (isTree(type) ? 0.45 : 0.15);
+    if (Math.abs(pt.x) > edge || Math.abs(pt.z) > edge) { floatText(head, 'Muy cerca de la orilla', 'muted'); return; }
+    if (usedSlots() + slotsOf(type) > capacity()) { floatText(head, 'Ya no cabe más. Amplía tu terreno.', 'muted'); return; }
+    if (!spotFree(pt.x, pt.z, type)) { floatText(head, isTree(type) ? 'Un árbol necesita más espacio' : 'Muy pegada a otra planta', 'muted'); return; }
     state.seeds[type]--;
-    const p = { id: state.nextId++, type, i, j, g: 0.05, w: null };
+    const p = newPlant(type, pt.x, pt.z, 0.05);
     state.plants.push(p);
     spawnPlant(p, true);
-    spawnBurst(tilePos(i, j).add(new V3(0, 0.1, 0)), '#8d5f3f', 10);
-    floatText(tilePos(i, j).add(new V3(0, 0.7, 0)), 'Plantada', 'xp');
+    spawnBurst(new V3(pt.x, DIRT_TOP + 0.05, pt.z), '#7a5236', 8, true);
+    floatText(head, 'Plantada', 'xp');
     renderHUD(); renderBag(); save();
-    if (!(state.seeds[type] > 0)) setMode('view');
-    else { updateModeText(); refreshTileHints(); }
+    if (!(state.seeds[type] > 0)) setMode('view'); else updateModeText();
   }
-  function placeDecor(p) {
+  async function placeDecor(p) {
     const type = modeData;
-    const lim = half() + 3.2;
+    const lim = half() + 3.4;
     if (Math.hypot(p.x, p.z) > lim) { floatText(p, 'Muy lejos del jardín', 'muted'); return; }
+    if (obstacleNear(p.x, p.z)) { floatText(p, 'Algo estorba aquí. Quítalo con la pala.', 'muted'); return; }
     if (!(state.bag[type] > 0)) { setMode('view'); return; }
     state.bag[type]--;
     const d = { id: state.nextId++, type, x: +p.x.toFixed(2), z: +p.z.toFixed(2), r: 0 };
     state.decor.push(d);
-    const o = spawnDecor(d, true);
+    let o = spawnDecor(d, true);
     setMode('view');
     selectDecor(o);
-    renderBag(); save();
+    renderHUD(); renderBag(); save();
+    if (type === 'letrero') await editSign();
+  }
+  async function editSign() {
+    if (!selected || selected.userData.type !== 'letrero') return;
+    const d = state.decor.find((x) => x.id === selected.userData.decorId);
+    if (!d) return;
+    const val = await askModal({
+      title: 'Escribe en el letrero', text: 'Hasta 22 letras. Déjalo vacío si lo quieres sin nada.',
+      input: true, value: d.text || '', ok: 'Guardar',
+    });
+    if (val === null) return;
+    d.text = val.trim().slice(0, 22);
+    const old = selected;
+    decorGroup.remove(old);
+    decorObjs.delete(d.id);
+    const o = spawnDecor(d, true);
+    selectDecor(o);
+    save();
   }
   function buy(kind, id) {
     const info = kind === 'seed' ? seedInfo(id) : decorInfo(id);
@@ -788,11 +1133,20 @@
     const next = state.grid + 1;
     const price = LAND_PRICE[next];
     if (!price || state.coins < price) return;
+    const blockers = blockingObstacles(next);
+    if (blockers.length) {
+      toast(`Primero quita con la pala ${blockers.length === 1 ? 'lo que estorba' : `las ${blockers.length} cosas que estorban`} alrededor del jardín.`);
+      blockers.forEach((b) => {
+        const o = obstGroup.children.find((c) => c.userData.obstId === b.id);
+        if (o) { o.userData.sq.v += 5; springy.add(o); }
+      });
+      closeDrawer();
+      return;
+    }
     state.coins -= price;
     state.grid = next;
     buildPlanter();
-    repositionAll();
-    refreshTileHints();
+    state.decor.forEach((d) => { const o = decorObjs.get(d.id); if (o) o.position.y = yAt(d.x, d.z); });
     garden.scale.setScalar(0.9);
     tween(0.6, (k) => garden.scale.setScalar(0.9 + 0.1 * k), ease.outBack);
     setGardenControls();
@@ -811,7 +1165,7 @@
     ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     ray.setFromCamera(ndc, camera);
   }
-  function hit(e, objs) { setRay(e); return ray.intersectObjects(objs, true)[0] || null; }
+  function hit(e, objs) { setRay(e); return ray.intersectObjects(objs.filter(Boolean), true)[0] || null; }
   function groundPoint(e, y = 0) {
     setRay(e);
     const out = new V3();
@@ -821,33 +1175,39 @@
     while (o) { if (o.userData && o.userData.kind) return o; o = o.parent; }
     return null;
   }
-  function pickTile(e) {
-    const h = hit(e, [plantsGroup, planter]);
+  /** Punto de la tierra tocado (o la base de la flor tocada). */
+  function bedPoint(e) {
+    const h = hit(e, [plantsGroup, bed]);
     if (!h) return null;
     const o = ownerOf(h.object);
-    if (!o) return null;
-    if (o.userData.kind === 'tile') return o;
-    if (o.userData.kind === 'flower') return tileAt(o.userData.i, o.userData.j);
+    if (o && o.userData.kind === 'flower') return new V3(o.position.x, DIRT_TOP, o.position.z);
+    if (o && o.userData.kind === 'bed') return new V3(h.point.x, DIRT_TOP, h.point.z);
     return null;
   }
 
   const pointers = new Map();
   let down = null;
   let dragging = false;
+  let dragStart = null;
   canvas.addEventListener('pointerdown', (e) => {
     pointers.set(e.pointerId, true);
     down = pointers.size === 1 ? { x: e.clientX, y: e.clientY, t: performance.now() } : null;
     if (mode === 'move' && selected && pointers.size === 1) {
       dragging = true;
+      dragStart = selected.position.clone();
       canvas.setPointerCapture(e.pointerId);
       dragTo(e);
     }
   });
   canvas.addEventListener('pointermove', (e) => {
     if (dragging) { dragTo(e); return; }
-    if (mode === 'water' && e.pointerType === 'mouse' && !canBusy && view === 'garden') {
+    if (e.pointerType !== 'mouse' || toolBusy || view !== 'garden') return;
+    if (mode === 'water') {
       const p = groundPoint(e, DIRT_TOP);
       if (p) can.position.lerp(p.add(new V3(-0.5, 1.15, 0)), 0.35);
+    } else if (mode === 'shovel') {
+      const p = groundPoint(e, 0);
+      if (p) shovel.position.lerp(p.add(new V3(0.12, 0.8, 0.12)), 0.35);
     }
   });
   const endPointer = (e) => {
@@ -855,7 +1215,12 @@
     if (dragging) {
       dragging = false;
       const d = state.decor.find((x) => x.id === selected.userData.decorId);
-      if (d) { d.x = +selected.position.x.toFixed(2); d.z = +selected.position.z.toFixed(2); save(); }
+      if (d) {
+        if (obstacleNear(selected.position.x, selected.position.z)) {
+          selected.position.copy(dragStart);
+          floatText(selected.position.clone().add(new V3(0, 1, 0)), 'Algo estorba ahí. Usa la pala.', 'muted');
+        } else { d.x = +selected.position.x.toFixed(2); d.z = +selected.position.z.toFixed(2); save(); }
+      }
       return;
     }
     if (!down || e.type === 'pointercancel') { down = null; return; }
@@ -870,7 +1235,7 @@
   function dragTo(e) {
     const p = groundPoint(e, 0);
     if (!p || !selected) return;
-    const lim = half() + 3.2;
+    const lim = half() + 3.4;
     const d = Math.hypot(p.x, p.z);
     if (d > lim) p.multiplyScalar(lim / d);
     selected.position.set(p.x, yAt(p.x, p.z), p.z);
@@ -887,11 +1252,12 @@
       return;
     }
     if (view !== 'garden') return;
-    if (mode === 'water') { const t = pickTile(e); if (t) waterTile(t); return; }
-    if (mode === 'plant') { const t = pickTile(e); if (t) plantSeed(t); return; }
+    if (mode === 'water') { const p = bedPoint(e); if (p) waterAt(p); return; }
+    if (mode === 'shovel') { shovelTap(e); return; }
+    if (mode === 'plant') { const p = bedPoint(e); if (p) plantSeedAt(p); return; }
     if (mode === 'place') { const p = groundPoint(e, 0); if (p) placeDecor(p); return; }
     if (mode === 'move') return;
-    const h = hit(e, [plantsGroup, decorGroup]);
+    const h = hit(e, [plantsGroup, decorGroup, obstGroup]);
     if (!h) { selectDecor(null); return; }
     const o = ownerOf(h.object);
     if (o && o.userData.kind === 'decor') {
@@ -900,6 +1266,10 @@
     } else if (o && o.userData.kind === 'flower') {
       selectDecor(null);
       pokeFlower(o, h.object, h.point);
+    } else if (o && o.userData.kind === 'obstacle') {
+      selectDecor(null);
+      o.userData.sq.v += 3; springy.add(o);
+      floatText(h.point.clone().add(new V3(0, 0.5, 0)), 'Quítalo con la pala', 'muted');
     }
   }
 
@@ -907,13 +1277,28 @@
   // Transiciones
   // =====================================================================
   function seedFromBouquet() {
-    const order = [];
-    for (let i = 0; i < state.grid; i++) for (let j = 0; j < state.grid; j++) order.push({ i, j, d: tilePos(i, j).lengthSq() + Math.random() * 0.01 });
-    order.sort((a, b) => a.d - b.d);
-    BOUQUET_TYPES.forEach((type, k) => {
-      const t = order[k];
-      state.plants.push({ id: state.nextId++, type, i: t.i, j: t.j, g: 1, w: null });
+    const h = half() - 0.3;
+    const centers = [0, 1, 2].map(() => ({ x: rand(-h * 0.6, h * 0.6), z: rand(-h * 0.6, h * 0.6), s: pick([0.22, 0.35, 0.6]) }));
+    BOUQUET.forEach(([type, tone]) => {
+      const spot = findSpot(type, Math.random() < 0.85 ? pick(centers) : null);
+      if (!spot) return;
+      state.plants.push(newPlant(type, spot.x, spot.z, +rand(0.5, 1).toFixed(2), tone));
     });
+  }
+  function showGardenUI(show) {
+    ['#hud', '#menuBtn', '#bagBtn'].forEach((s) => $(s).classList.toggle('hidden', !show));
+  }
+  async function popPlants() {
+    const objs = [...plantObjs.values()];
+    objs.forEach((o) => o.scale.setScalar(0.01));
+    for (const o of objs) {
+      const p = state.plants.find((x) => x.id === o.userData.plantId);
+      if (p) applyGrowth(o, p, true);
+      await wait(reduceMotion ? 0 : 60);
+    }
+  }
+  function greet() {
+    if (state.plants.some((p) => p.w !== today())) toast('Tus flores tienen sed. Toma la regadera desde la tienda.');
   }
 
   async function goToGarden() {
@@ -923,7 +1308,6 @@
     $('#intro').classList.add('hidden');
     controls.autoRotate = false;
     controls.enabled = false;
-    const firstTime = !state.placed;
     bouquet.userData.bob = false;
     const y0 = bouquet.position.y;
     await tween(0.8, (k) => {
@@ -931,14 +1315,12 @@
       bouquet.scale.setScalar(Math.max(0.01, 1 - k * 0.9));
       bouquet.rotation.y += 0.06;
     }, ease.inCubic);
-    const burstAt = bouquet.position.clone();
+    spawnBurst(bouquet.position.clone(), '#ff8fb1', 14);
     bouquet.visible = false;
-    spawnBurst(burstAt, '#ff8fb1', 14);
     view = 'garden';
-    if (firstTime) { seedFromBouquet(); state.placed = true; }
+    if (!state.placed) { seedFromBouquet(); state.placed = true; }
     rebuildGarden();
-    const objs = [...plantObjs.values()];
-    objs.forEach((o) => o.scale.setScalar(0.01));
+    plantObjs.forEach((o) => o.scale.setScalar(0.01));
     garden.visible = true;
     garden.scale.setScalar(0.01);
     setGardenControls();
@@ -946,51 +1328,69 @@
       flyCamera(gardenCam(), new V3(0, 0.7, 0), 1.2),
       tween(0.9, (k) => garden.scale.setScalar(Math.max(0.01, k)), ease.outBack),
     ]);
-    setGardenControls();
     controls.enabled = true;
-    $('#hud').classList.remove('hidden');
-    $('#menuBtn').classList.remove('hidden');
-    $('#bagBtn').classList.remove('hidden');
+    showGardenUI(true);
     renderHUD(); renderShop(); renderBag();
-    for (const o of objs) {
-      const p = state.plants.find((x) => x.id === o.userData.plantId);
-      applyGrowth(o, p.g, true);
-      await wait(reduceMotion ? 0 : 70);
-    }
-    if (firstTime) {
-      save();
-      toast('Tu ramo ya tiene un hogar. Riégalo cada día para que crezca.');
-    } else if (state.plants.some((p) => p.w !== today())) {
-      toast('Tus flores tienen sed. Toma la regadera desde la tienda.');
-    }
+    await popPlants();
+    save();
+    toast('Tu ramo ya tiene un hogar. Riégalo cada día para que crezca.');
     busy = false;
   }
 
-  async function goToBouquet() {
-    if (view !== 'garden' || busy) return;
-    busy = true;
-    closeDrawer(); closeBag();
-    setMode('view'); selectDecor(null);
-    $('#hud').classList.add('hidden');
-    $('#menuBtn').classList.add('hidden');
-    $('#bagBtn').classList.add('hidden');
-    await tween(0.5, (k) => garden.scale.setScalar(Math.max(0.01, 1 - k)), ease.inCubic);
-    garden.visible = false;
+  /** Visitas siguientes: directo al jardín, sin ramo. */
+  async function enterGarden() {
+    view = 'garden';
+    bouquet.visible = false;
+    rebuildGarden();
+    garden.visible = true;
+    setGardenControls();
+    camera.position.copy(gardenCam()).multiplyScalar(1.35);
+    controls.target.set(0, 0.7, 0);
+    showGardenUI(true);
+    renderHUD(); renderShop(); renderBag();
+    flyCamera(gardenCam(), new V3(0, 0.7, 0), 1.4);
+    await popPlants();
+    greet();
+  }
+
+  function showIntro(firstLoad) {
     view = 'intro';
+    garden.visible = false;
+    showGardenUI(false);
+    setIntroControls();
     bouquet.visible = true;
     bouquet.position.y = BOUQUET_Y;
+    bouquet.rotation.y = 0;
+    bouquet.userData.bob = true;
+    controls.autoRotate = !reduceMotion;
+    $('#placeBtn').textContent = 'Colocarlas';
+    $('#placeBtn').classList.remove('hidden');
+    $('#intro').classList.remove('hidden');
+    if (firstLoad) { bouquet.scale.setScalar(1); return Promise.resolve(); }
     bouquet.scale.setScalar(0.01);
-    controls.enablePan = false;
-    controls.minDistance = 2.2; controls.maxDistance = 12; controls.maxPolarAngle = 1.55;
-    await Promise.all([
+    return Promise.all([
       flyCamera(introCam(), INTRO_TARGET, 1),
       tween(0.8, (k) => bouquet.scale.setScalar(Math.max(0.01, k)), ease.outBack),
     ]);
-    bouquet.userData.bob = true;
-    controls.autoRotate = !reduceMotion;
-    $('#placeBtn').textContent = 'Ir al jardín';
-    $('#placeBtn').classList.remove('hidden');
-    $('#intro').classList.remove('hidden');
+  }
+
+  async function resetAll() {
+    const ok = await askModal({
+      title: '¿Empezar de cero?',
+      text: 'Se borran tus flores, monedas, decoraciones y nivel, en este y en los otros dispositivos. Vuelves a recibir el ramo.',
+      ok: 'Borrar y empezar', danger: true,
+    });
+    if (!ok || busy) return;
+    busy = true;
+    closeDrawer(); closeBag();
+    setMode('view'); selectDecor(null);
+    showGardenUI(false);
+    await tween(0.5, (k) => garden.scale.setScalar(Math.max(0.01, 1 - k)), ease.inCubic);
+    state = freshState();
+    save();
+    rebuildGarden();
+    garden.scale.setScalar(1);
+    await showIntro(false);
     busy = false;
   }
 
@@ -1022,10 +1422,10 @@
   }
 
   let tab = 'tools';
-  function itemCard({ thumb, name, desc, price, btn, attr, disabled }) {
+  function itemCard({ thumb, name, desc, price, btn, attr, disabled, tag }) {
     return `<article class="item">
       <img src="${thumb || ''}" alt="" width="72" height="72">
-      <div class="info"><h3>${name}</h3>${desc ? `<p>${desc}</p>` : ''}</div>
+      <div class="info"><h3>${name}</h3>${desc ? `<p>${desc}</p>` : ''}${tag ? `<span class="tag">${tag}</span>` : ''}</div>
       <button class="btn buy" ${attr} ${disabled ? 'disabled' : ''}>${price != null ? COIN + price : btn}</button>
     </article>`;
   }
@@ -1033,22 +1433,27 @@
     const body = $('#drawerBody');
     document.querySelectorAll('.tabs button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
     if (tab === 'tools') {
-      body.innerHTML = itemCard({
-        thumb: thumbs.can, name: 'Regadera', desc: 'Cada flor te da XP y monedas una vez al día. Si riegas diario, tu racha sube las recompensas.',
-        btn: mode === 'water' ? 'En uso' : 'Tomar', attr: 'data-tool="can"', disabled: mode === 'water',
-      }) + `<p class="note">Cuando subes de nivel brota una flor nueva en un cuadro libre. Si ya no hay espacio, tus flores ganan altura.</p>`;
+      body.innerHTML =
+        itemCard({ thumb: thumbs.can, name: 'Regadera', desc: 'Cada flor da XP y monedas una vez al día, y donde riegas brota pastito.', btn: mode === 'water' ? 'En uso' : 'Tomar', attr: 'data-tool="water"', disabled: mode === 'water' }) +
+        itemCard({ thumb: thumbs.shovel, name: 'Pala', desc: 'Quita piedras, troncos y maleza. A veces encuentras monedas o semillas.', btn: mode === 'shovel' ? 'En uso' : 'Tomar', attr: 'data-tool="shovel"', disabled: mode === 'shovel' }) +
+        '<p class="note">Al subir de nivel, algunas flores dan un estirón y brota una nueva donde haya espacio.</p>';
     } else if (tab === 'seeds') {
-      body.innerHTML = SEEDS.map((s) => itemCard({ thumb: thumbs[s.id], name: s.name, desc: s.desc, price: s.price, attr: `data-seed="${s.id}"`, disabled: state.coins < s.price })).join('');
+      body.innerHTML = SEEDS.map((s) => itemCard({
+        thumb: thumbs[s.id], name: s.name, desc: s.desc, price: s.price, attr: `data-seed="${s.id}"`, disabled: state.coins < s.price,
+        tag: Models.toneCount(s.id) > 1 ? `${Models.toneCount(s.id)} tonos al azar` : '',
+      })).join('');
     } else if (tab === 'decor') {
       body.innerHTML = DECOR.map((d) => itemCard({ thumb: thumbs[d.id], name: d.name, desc: d.desc, price: d.price, attr: `data-decor="${d.id}"`, disabled: state.coins < d.price })).join('');
     } else {
       const next = state.grid + 1, price = LAND_PRICE[next];
+      const blockers = price ? blockingObstacles(next).length : 0;
       body.innerHTML = `<div class="land">
-        <div class="land-grid" style="--n:${state.grid}">${'<i></i>'.repeat(state.grid * state.grid)}</div>
-        <p>Tu jardín mide <b>${state.grid} × ${state.grid}</b> y tiene ${state.plants.length} de ${state.grid * state.grid} cuadros ocupados.</p>
+        <div class="land-grid" style="--n:${state.grid}"></div>
+        <p>Tu jardín mide <b>${state.grid} × ${state.grid}</b>. Espacio usado: <b>${usedSlots()} de ${capacity()}</b> (los árboles ocupan 3).</p>
         <p>Altura extra de tus flores: <b>${state.heightCap} de ${CFG.maxHeight}</b>.</p>
-        ${price ? `<button class="btn" data-land ${state.coins < price ? 'disabled' : ''}>Ampliar a ${next} × ${next} por ${COIN}${price}</button>`
-                : '<p class="note">Tu jardín ya tiene el tamaño máximo.</p>'}
+        ${price ? (blockers ? `<p class="note warn">Para ampliar, primero quita con la pala ${blockers === 1 ? 'lo que estorba' : `las ${blockers} cosas que estorban`} junto al jardín.</p>` : '') +
+          `<button class="btn" data-land ${state.coins < price || blockers ? 'disabled' : ''}>Ampliar a ${next} × ${next} por ${COIN}${price}</button>`
+        : '<p class="note">Tu jardín ya tiene el tamaño máximo.</p>'}
       </div>`;
     }
   }
@@ -1056,15 +1461,15 @@
     const body = $('#bagBody');
     const seeds = SEEDS.filter((s) => state.seeds[s.id] > 0);
     const decs = DECOR.filter((d) => state.bag[d.id] > 0);
-    const full = emptyTiles().length === 0;
     if (!seeds.length && !decs.length) {
       body.innerHTML = '<p class="empty">Tu mochila está vacía. Compra semillas o decoraciones en la tienda.</p>';
       return;
     }
+    const free = capacity() - usedSlots();
     const row = (thumb, name, n, attr, label, dis) => `<div class="bag-row"><img src="${thumb || ''}" alt="" width="52" height="52"><span>${name}<small>× ${n}</small></span><button class="btn small" ${attr} ${dis ? 'disabled' : ''}>${label}</button></div>`;
     body.innerHTML =
-      (seeds.length ? `<h3>Semillas</h3>${full ? '<p class="note">No hay cuadros libres. Amplía tu terreno para plantar más.</p>' : ''}` +
-        seeds.map((s) => row(thumbs[s.id], s.name, state.seeds[s.id], `data-use-seed="${s.id}"`, 'Plantar', full)).join('') : '') +
+      (seeds.length ? `<h3>Semillas</h3>${free < 1 ? '<p class="note">Ya no hay espacio. Amplía tu terreno para plantar más.</p>' : ''}` +
+        seeds.map((s) => row(thumbs[s.id], s.name, state.seeds[s.id], `data-use-seed="${s.id}"`, 'Plantar', free < slotsOf(s.id))).join('') : '') +
       (decs.length ? '<h3>Decoraciones</h3>' + decs.map((d) => row(thumbs[d.id], d.name, state.bag[d.id], `data-use-decor="${d.id}"`, 'Colocar')).join('') : '');
   }
 
@@ -1083,13 +1488,36 @@
   function openBag() { closeDrawer(); renderBag(); $('#bag').classList.remove('hidden'); }
   function closeBag() { $('#bag').classList.add('hidden'); }
 
+  function askModal({ title, text, input = false, value = '', ok = 'Aceptar', cancel = 'Cancelar', danger = false }) {
+    return new Promise((resolve) => {
+      const m = $('#modal'), inp = $('#modalInput'), okB = $('#modalOk'), cB = $('#modalCancel');
+      $('#modalTitle').textContent = title;
+      $('#modalText').textContent = text || '';
+      inp.classList.toggle('hidden', !input);
+      inp.value = value;
+      okB.textContent = ok; cB.textContent = cancel;
+      okB.classList.toggle('danger', danger);
+      m.classList.remove('hidden');
+      if (input) setTimeout(() => inp.focus(), 50); else okB.focus();
+      const done = (v) => {
+        m.classList.add('hidden');
+        okB.onclick = cB.onclick = inp.onkeydown = m.onclick = null;
+        resolve(v);
+      };
+      okB.onclick = () => done(input ? inp.value : true);
+      cB.onclick = () => done(input ? null : false);
+      inp.onkeydown = (e) => { if (e.key === 'Enter') done(inp.value); };
+      m.onclick = (e) => { if (e.target === m) done(input ? null : false); };
+    });
+  }
+
   function toast(text) {
     const el = document.createElement('div');
     el.className = 'toast';
     el.textContent = text;
     $('#toasts').appendChild(el);
-    setTimeout(() => el.classList.add('out'), 3600);
-    setTimeout(() => el.remove(), 4100);
+    setTimeout(() => el.classList.add('out'), 3800);
+    setTimeout(() => el.remove(), 4300);
   }
   function floatText(pos, text, cls = '') {
     const v = pos.clone().project(camera);
@@ -1097,7 +1525,7 @@
     const el = document.createElement('div');
     el.className = 'float ' + cls;
     el.innerHTML = cls === 'coin' ? COIN + text : text;
-    el.style.left = `${(v.x * 0.5 + 0.5) * innerWidth}px`;
+    el.style.left = `${clamp((v.x * 0.5 + 0.5) * innerWidth, 90, innerWidth - 90)}px`;
     el.style.top = `${(-v.y * 0.5 + 0.5) * innerHeight}px`;
     $('#floats').appendChild(el);
     setTimeout(() => el.remove(), 1600);
@@ -1119,7 +1547,7 @@
   $('#bagBtn').addEventListener('click', () => ($('#bag').classList.contains('hidden') ? openBag() : closeBag()));
   $('#bagClose').addEventListener('click', closeBag);
   $('#shareBtn').addEventListener('click', share);
-  $('#bouquetBtn').addEventListener('click', goToBouquet);
+  $('#resetBtn').addEventListener('click', resetAll);
   $('#modeDone').addEventListener('click', () => { if (mode === 'move') save(); setMode('view'); });
   document.querySelector('.tabs').addEventListener('click', (e) => {
     const b = e.target.closest('button[data-tab]');
@@ -1130,7 +1558,7 @@
   $('#drawerBody').addEventListener('click', (e) => {
     const b = e.target.closest('button');
     if (!b || b.disabled) return;
-    if (b.dataset.tool === 'can') { closeDrawer(); setMode('water'); }
+    if (b.dataset.tool) { closeDrawer(); setMode(b.dataset.tool); }
     else if (b.dataset.seed) buy('seed', b.dataset.seed);
     else if (b.dataset.decor) buy('decor', b.dataset.decor);
     else if (b.hasAttribute('data-land')) buyLand();
@@ -1149,6 +1577,7 @@
     if (!d) return;
     const act = b.dataset.act;
     if (act === 'move') setMode('move');
+    else if (act === 'text') editSign();
     else if (act === 'rotate') {
       d.r = ((d.r || 0) + Math.PI / 4) % (Math.PI * 2);
       const o = selected, r0 = o.rotation.y, r1 = r0 + Math.PI / 4;
@@ -1165,18 +1594,25 @@
     } else if (act === 'close') selectDecor(null);
   });
   addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape') return;
+    if (e.key !== 'Escape' || !$('#modal').classList.contains('hidden')) return;
     if ($('#drawer').classList.contains('open')) closeDrawer();
     else if (!$('#bag').classList.contains('hidden')) closeBag();
     else if (mode !== 'view') setMode('view');
     else selectDecor(null);
   });
 
-  // Si el otro dispositivo cambió el jardín, lo traemos al volver a la app
+  // Cambios hechos desde el otro dispositivo
   function adoptRemote(remote, notify) {
     state = sanitize(remote);
     safeSet(LS_KEY, JSON.stringify(state));
-    if (view === 'garden') { setMode('view'); selectDecor(null); rebuildGarden(); renderHUD(); renderShop(); renderBag(); }
+    if (view === 'garden') {
+      setMode('view'); selectDecor(null);
+      if (!state.placed) { rebuildGarden(); showIntro(false); }
+      else { rebuildGarden(); renderHUD(); renderShop(); renderBag(); }
+    } else if (view === 'intro' && state.placed) {
+      $('#placeBtn').classList.add('hidden'); $('#intro').classList.add('hidden');
+      enterGarden();
+    }
     if (notify) toast('El jardín se actualizó con los cambios del otro dispositivo.');
   }
   document.addEventListener('visibilitychange', async () => {
@@ -1184,6 +1620,7 @@
     try {
       const r = await fetchJSON(`${API}?id=${encodeURIComponent(gardenId)}`);
       if (r.state && (r.state.updatedAt || 0) > (state.updatedAt || 0)) adoptRemote(r.state, false);
+      else if (view === 'garden') { rebuildGrass(); renderHUD(); }
     } catch { /* sin conexión */ }
   });
 
@@ -1193,9 +1630,7 @@
   function makeThumbs() {
     const out = {};
     let r;
-    try {
-      r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
-    } catch { return out; }
+    try { r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true }); } catch { return out; }
     r.setPixelRatio(1);
     r.setSize(160, 160);
     const s = new THREE.Scene();
@@ -1218,14 +1653,11 @@
       s.remove(obj);
       return url;
     };
-    const flowerShot = (id) => {
-      // encuadramos la cabeza de la flor y un poco del tallo
-      const f = Models.buildFlower(id, { stemH: 0.5, headScale: 1.2 });
-      return shot(f);
-    };
-    SEEDS.forEach((x) => { out[x.id] = flowerShot(x.id); });
-    DECOR.forEach((x) => { out[x.id] = shot(Models.buildDecor(x.id)); });
+    SEEDS.forEach((x) => { out[x.id] = shot(isTree(x.id) ? Models.buildFlower(x.id) : Models.buildFlower(x.id, { stemH: 0.5, headScale: 1.2, noLeaves: true })); });
+    DECOR.forEach((x) => { out[x.id] = shot(Models.buildDecor(x.id, { text: x.id === 'letrero' ? '' : undefined })); });
     out.can = shot(Models.buildCan());
+    const sh = Models.buildShovel(); sh.rotation.z = 0.5;
+    out.shovel = shot(sh);
     r.dispose();
     if (r.forceContextLoss) r.forceContextLoss();
     return out;
@@ -1251,6 +1683,7 @@
     elapsed += dt;
     updateTweens(raw);
     stepSprings(dt);
+    swayFlowers(ambientTrees, elapsed * 0.6);
     if (bouquet.visible) {
       swayFlowers(bouquetFlowers, elapsed);
       if (bouquet.userData.bob) bouquet.position.y = BOUQUET_Y + Math.sin(elapsed * 1.2) * 0.05;
@@ -1258,17 +1691,13 @@
     if (garden.visible) {
       swayFlowers(plantsGroup.children, elapsed);
       decorGroup.children.forEach((o) => o.userData.update && o.userData.update(elapsed, dt));
-      tiles.forEach((t) => {
-        if (t.userData.wet > 0) {
-          t.userData.wet = Math.max(0, t.userData.wet - dt * 0.12);
-          t.material.color.set('#8d5f3f').lerp(new THREE.Color('#4e3121'), t.userData.wet);
-        }
-      });
+      updateWets(dt);
       if (selected) {
         selRing.position.set(selected.position.x, selected.position.y + 0.02, selected.position.z);
         selRing.scale.setScalar(1 + Math.sin(elapsed * 4) * 0.05);
       }
-      if (mode === 'water' && !canBusy) can.rotation.z = Math.sin(elapsed * 2) * 0.05;
+      if (mode === 'water' && !toolBusy) can.rotation.z = Math.sin(elapsed * 2) * 0.05;
+      if (mode === 'shovel' && !toolBusy) shovel.position.y += Math.sin(elapsed * 2.4) * 0.0015;
     }
     updateBits(dt);
     updateDrift(dt, elapsed);
@@ -1276,6 +1705,14 @@
     renderer.render(scene, camera);
   }
   loop();
+
+  // Ayuda para pruebas: abre la página con ?debug=1
+  if (params.get('debug') === '1') {
+    window.__jardin = {
+      get state() { return state; },
+      screenOf(x, y, z) { const v = new V3(x, y, z).project(camera); return [(v.x * 0.5 + 0.5) * innerWidth, (-v.y * 0.5 + 0.5) * innerHeight]; },
+    };
+  }
 
   // =====================================================================
   // Arranque
@@ -1285,13 +1722,13 @@
     const [loaded] = await Promise.all([loadState(), fontsReady]);
     state = loaded;
     thumbs = makeThumbs();
-    rebuildGarden();
-    view = 'intro';
-    $('#placeBtn').textContent = state.placed ? 'Ir al jardín' : 'Colocarlas';
     $('#loader').classList.add('gone');
-    $('#intro').classList.remove('hidden');
-    $('#placeBtn').classList.remove('hidden');
-    // pequeño saludo del ramo
-    setTimeout(() => bouquetFlowers.forEach((f, i) => setTimeout(() => pokeFlower(f, null, null), i * 90)), 500);
+    if (state.placed) {
+      await enterGarden();
+    } else {
+      rebuildGarden();
+      await showIntro(true);
+      setTimeout(() => bouquetFlowers.forEach((f, i) => setTimeout(() => pokeFlower(f, null, null), i * 60)), 500);
+    }
   })();
 })();

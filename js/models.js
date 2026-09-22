@@ -67,12 +67,14 @@ window.Models = (() => {
           const s = Math.random() * 3 + 0.5;
           x.fillRect(Math.random() * w, Math.random() * h, s, s);
         }
-        // surcos
-        x.strokeStyle = 'rgba(50,25,10,.18)'; x.lineWidth = 3;
-        for (let k = 1; k < 4; k++) { x.beginPath(); x.moveTo(0, k * 32); x.lineTo(w, k * 32 + 2); x.stroke(); }
+        for (let i = 0; i < 40; i++) {
+          x.fillStyle = `rgba(40,20,8,${Math.random() * 0.12})`;
+          x.beginPath(); x.ellipse(Math.random() * w, Math.random() * h, 3 + Math.random() * 6, 2 + Math.random() * 4, Math.random() * 3, 0, Math.PI * 2); x.fill();
+        }
       });
     }
-    return new THREE.MeshStandardMaterial({ color: '#8d5f3f', map: dirtTexture, roughness: 1 });
+    const t = dirtTexture.clone(); t.needsUpdate = true;
+    return new THREE.MeshStandardMaterial({ color: '#8d5f3f', map: t, roughness: 1 });
   }
 
   // ---------- Geometrías ----------
@@ -172,121 +174,234 @@ window.Models = (() => {
     }
   }
 
+  const pickR = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  const scaleBud = (m) => { m.userData.petal = { rest: 0, a: 0, v: 0, mode: 'scale' }; return m; };
+
+  // Cada flor tiene varios tonos (tones); build recibe los colores del tono elegido.
   const FLOWERS = {
     margarita: {
-      stemH: 0.85, leaves: 2, color: '#ffffff',
-      build(h, P) {
-        ringPetals(h, P, { n: 16, w: 0.075, h: 0.26, cup: 0.15, curl: -0.04, tip: 0.96, open: 1.35, r: 0.05, color: '#ffffff' });
-        ringPetals(h, P, { n: 14, w: 0.07, h: 0.21, cup: 0.15, open: 1.15, r: 0.04, y: 0.012, off: 0.2, color: '#fff2f7' });
-        center(h, 0.075, '#ffc94d', 0.55, 0.02);
+      stemH: 0.85, leaves: 2,
+      tones: [['#ffffff', '#fff2f7', '#ffc94d'], ['#ffc2d6', '#ffdbe8', '#ffc94d'], ['#d9c7ff', '#ebe0ff', '#ffd166']],
+      build(h, P, c) {
+        ringPetals(h, P, { n: 16, w: 0.075, h: 0.26, cup: 0.15, curl: -0.04, tip: 0.96, open: 1.35, r: 0.05, color: c[0] });
+        ringPetals(h, P, { n: 14, w: 0.07, h: 0.21, cup: 0.15, open: 1.15, r: 0.04, y: 0.012, off: 0.2, color: c[1] });
+        center(h, 0.075, c[2], 0.55, 0.02);
       },
     },
-    tulipan: {
-      stemH: 1.0, leaves: 2, long: true, color: '#ff6f9c',
-      build(h, P) {
-        ringPetals(h, P, { n: 3, w: 0.2, h: 0.34, cup: 0.55, curl: 0.02, tip: 0.97, open: 0.18, r: 0.03, color: '#ff6f9c' });
-        ringPetals(h, P, { n: 3, w: 0.21, h: 0.33, cup: 0.55, tip: 0.97, open: 0.3, r: 0.05, off: Math.PI / 3, color: '#ff8fb1' });
-      },
-    },
-    lavanda: {
-      stemH: 1.1, leaves: 3, long: true, color: '#9b7fd4', stemR: 0.018,
-      build(h, P) {
-        const cols = ['#9b7fd4', '#8a6bcb', '#b39ddb'];
-        for (let i = 0; i < 26; i++) {
-          const t = i / 26;
-          const a = i * 2.4;
-          const r = 0.038 * (1 - t * 0.5);
-          const b = sph(0.03, mat(cols[i % 3]), Math.cos(a) * r, -0.4 + t * 0.46, Math.sin(a) * r);
-          b.scale.set(1, 1.5, 1);
-          b.userData.petal = { rest: 0, a: 0, v: 0, mode: 'scale', base: 1 };
-          h.add(b); P.push(b);
+    nube: {
+      stemH: 0.8, leaves: 0, stemR: 0.012,
+      tones: [['#ffffff', '#fbf3f6'], ['#ffd6e4', '#ffe9f0']],
+      build(h, P, c) {
+        const tw = mat('#7fb68d');
+        for (let i = 0; i < 9; i++) {
+          const a = i * 2.4, r = 0.06 + (i % 3) * 0.05, y = -0.1 + (i % 4) * 0.045;
+          const t = cyl(0.004, 0.004, 0.2, 4, tw, Math.cos(a) * r * 0.5, y - 0.07, Math.sin(a) * r * 0.5);
+          t.rotation.z = -Math.cos(a) * 0.5; t.rotation.x = Math.sin(a) * 0.5;
+          h.add(t);
+          for (let k = 0; k < 4; k++) {
+            const b = sph([0.022, 0.027, 0.032][k % 3], mat(c[k % 2]), Math.cos(a) * r + rnd(-0.03, 0.03), y + rnd(-0.02, 0.04), Math.sin(a) * r + rnd(-0.03, 0.03));
+            h.add(scaleBud(b)); P.push(b);
+          }
         }
       },
     },
+    tulipan: {
+      stemH: 1.0, leaves: 2, long: true,
+      tones: [['#ff6f9c', '#ff8fb1'], ['#e53950', '#f25c6e'], ['#ffd166', '#ffe08a'], ['#ffffff', '#fff0f5'], ['#a77be0', '#c09bef'], ['#ff9a5c', '#ffb784']],
+      build(h, P, c) {
+        ringPetals(h, P, { n: 3, w: 0.2, h: 0.34, cup: 0.55, curl: 0.02, tip: 0.97, open: 0.18, r: 0.03, color: c[0] });
+        ringPetals(h, P, { n: 3, w: 0.21, h: 0.33, cup: 0.55, tip: 0.97, open: 0.3, r: 0.05, off: Math.PI / 3, color: c[1] });
+      },
+    },
+    lavanda: {
+      stemH: 1.1, leaves: 3, long: true, stemR: 0.018,
+      tones: [['#9b7fd4', '#8a6bcb', '#b39ddb'], ['#c9b3f0', '#b8a0ea', '#dccbf7']],
+      build(h, P, c) {
+        for (let i = 0; i < 26; i++) {
+          const t = i / 26, a = i * 2.4, r = 0.038 * (1 - t * 0.5);
+          const b = sph(0.03, mat(c[i % 3]), Math.cos(a) * r, -0.4 + t * 0.46, Math.sin(a) * r);
+          b.scale.set(1, 1.5, 1);
+          h.add(scaleBud(b)); P.push(b);
+        }
+      },
+    },
+    campanilla: {
+      stemH: 0.9, leaves: 2, long: true,
+      tones: [['#7e9cf5', '#98b0f8'], ['#b89cf0', '#cdb6f5'], ['#ffffff', '#f3f0ff']],
+      build(h, P, c) {
+        for (let k = 0; k < 3; k++) {
+          const a = k * 2.1;
+          const g = new THREE.Group();
+          g.position.set(Math.cos(a) * 0.09, -k * 0.13, Math.sin(a) * 0.09);
+          g.rotation.set(Math.PI * 0.8, a, 0);
+          ringPetals(g, P, { n: 5, w: 0.09, h: 0.15, cup: 0.5, curl: -0.12, tip: 0.9, open: 0.3, color: c[k % 2] });
+          h.add(g);
+        }
+      },
+    },
+    cosmos: {
+      stemH: 1.05, leaves: 2, stemR: 0.018,
+      tones: [['#f48fb1', '#ffcf40'], ['#d6408b', '#ffcf40'], ['#ffffff', '#ffcf40'], ['#ff9f7a', '#ffd166']],
+      build(h, P, c) {
+        ringPetals(h, P, { n: 8, w: 0.13, h: 0.22, cup: 0.05, tip: 0.86, ruffle: 0.06, open: 1.35, r: 0.03, color: c[0] });
+        center(h, 0.05, c[1], 0.6, 0.02);
+      },
+    },
     rosa: {
-      stemH: 1.05, leaves: 3, color: '#e84a7f',
-      build(h, P) {
-        const c = ['#b3134f', '#d81b60', '#e84a7f', '#f06a95'];
+      stemH: 1.05, leaves: 3,
+      tones: [
+        ['#b3134f', '#d81b60', '#e84a7f', '#f06a95'], ['#8e0e25', '#b71c2e', '#d32f3f', '#e5505e'],
+        ['#f3e9e4', '#f7f0ec', '#fbf6f3', '#ffffff'], ['#f5b82e', '#f7c64d', '#f9d46e', '#fbe092'],
+        ['#f29a8a', '#f5ad9f', '#f8c1b5', '#fbd4cb'],
+      ],
+      build(h, P, c) {
         ringPetals(h, P, { n: 3, w: 0.1, h: 0.14, cup: 0.75, open: 0.05, color: c[0], tip: 0.9 });
         ringPetals(h, P, { n: 4, w: 0.13, h: 0.17, cup: 0.65, open: 0.25, r: 0.02, off: 0.5, color: c[1] });
         ringPetals(h, P, { n: 5, w: 0.17, h: 0.2, cup: 0.6, curl: 0.05, open: 0.6, r: 0.04, off: 0.2, color: c[2] });
         ringPetals(h, P, { n: 6, w: 0.2, h: 0.22, cup: 0.5, curl: 0.14, open: 1.0, r: 0.06, off: 0.7, color: c[3] });
       },
     },
+    amapola: {
+      stemH: 1.0, leaves: 2, stemR: 0.018,
+      tones: [['#e53935', '#ef5350'], ['#ff7043', '#ff8a65'], ['#ff8a80', '#ffab9f'], ['#fff5f5', '#ffffff']],
+      build(h, P, c) {
+        ringPetals(h, P, { n: 4, w: 0.27, h: 0.24, cup: 0.5, tip: 0.8, ruffle: 0.06, open: 0.8, r: 0.02, color: c[0] });
+        ringPetals(h, P, { n: 4, w: 0.24, h: 0.21, cup: 0.5, tip: 0.8, ruffle: 0.05, open: 0.55, r: 0.01, off: Math.PI / 4, color: c[1] });
+        center(h, 0.045, '#2b1b24', 0.8, 0.04);
+        for (let i = 0; i < 10; i++) { const a = i * 0.63; h.add(sph(0.012, mat('#3a2230'), Math.cos(a) * 0.06, 0.05, Math.sin(a) * 0.06)); }
+      },
+    },
+    clavel: {
+      stemH: 0.95, leaves: 2, long: true, stemR: 0.018,
+      tones: [['#f06c9b', '#f48fb1', '#f7a6c1'], ['#d32f3f', '#e04d5c', '#ea6a78'], ['#ffffff', '#fff2f6', '#ffe4ee']],
+      build(h, P, c) {
+        [[8, 0.1, 0.12, 0.3], [10, 0.12, 0.14, 0.7], [12, 0.13, 0.15, 1.1]].forEach(([n, w, hh, open], k) =>
+          ringPetals(h, P, { n, w, h: hh, cup: 0.4, tip: 0.8, ruffle: 0.25, open, r: 0.01 * k, off: k * 0.5, color: c[k] }));
+      },
+    },
     girasol: {
-      stemH: 1.3, leaves: 3, color: '#ffc93c', stemR: 0.035,
-      build(h, P) {
+      stemH: 1.3, leaves: 3, stemR: 0.035,
+      tones: [['#ffc93c', '#ffb300', '#6d4c41'], ['#ff9f43', '#f57f17', '#5d4037']],
+      build(h, P, c) {
         h.rotation.x = -0.25;
-        ringPetals(h, P, { n: 14, w: 0.1, h: 0.3, cup: 0.2, tip: 1, open: 1.45, r: 0.12, color: '#ffc93c' });
-        ringPetals(h, P, { n: 14, w: 0.09, h: 0.26, cup: 0.2, tip: 1, open: 1.25, r: 0.11, off: 0.22, color: '#ffb300' });
-        const d = cyl(0.15, 0.13, 0.06, 24, mat('#6d4c41', { roughness: 1 }), 0, 0.03, 0);
-        h.add(d);
+        ringPetals(h, P, { n: 14, w: 0.1, h: 0.3, cup: 0.2, tip: 1, open: 1.45, r: 0.12, color: c[0] });
+        ringPetals(h, P, { n: 14, w: 0.09, h: 0.26, cup: 0.2, tip: 1, open: 1.25, r: 0.11, off: 0.22, color: c[1] });
+        h.add(cyl(0.15, 0.13, 0.06, 24, mat(c[2], { roughness: 1 }), 0, 0.03, 0));
       },
     },
     hortensia: {
-      stemH: 0.95, leaves: 3, color: '#b9a6f0',
-      build(h, P) {
+      stemH: 0.95, leaves: 3,
+      tones: [['#b9a6f0', '#a8c4ff', '#d7b8f5', '#c7d6ff'], ['#f7a8c4', '#fbc3d6', '#f48fb1', '#ffd1e0'], ['#8fb8ff', '#a6c8ff', '#7aa6f5', '#bcd6ff']],
+      build(h, P, c) {
         center(h, 0.17, '#9fcf9f', 1, 0.1);
-        const cols = ['#b9a6f0', '#a8c4ff', '#d7b8f5', '#c7d6ff'];
         const N = 38;
         for (let i = 0; i < N; i++) {
           const y = 1 - (i / (N - 1)) * 1.3;
           const rr = Math.sqrt(Math.max(0, 1 - y * y));
           const a = i * 2.399963;
           const dir = new THREE.Vector3(Math.cos(a) * rr, y, Math.sin(a) * rr).normalize();
-          const f = new THREE.Mesh(floretGeo(), pmat(cols[i % 4]));
+          const f = new THREE.Mesh(floretGeo(), pmat(c[i % 4]));
           f.position.copy(dir).multiplyScalar(0.2).add(new THREE.Vector3(0, 0.1, 0));
           f.lookAt(f.position.clone().add(dir));
-          f.userData.petal = { rest: 0, a: 0, v: 0, mode: 'scale', base: 1 };
-          h.add(f); P.push(f);
+          h.add(scaleBud(f)); P.push(f);
         }
       },
     },
     lirio: {
-      stemH: 1.15, leaves: 2, long: true, color: '#fde2ec',
-      build(h, P) {
-        ringPetals(h, P, { n: 6, w: 0.15, h: 0.42, cup: 0.35, curl: 0.35, tip: 1, open: 0.75, r: 0.02, color: '#fde2ec' });
-        ringPetals(h, P, { n: 3, w: 0.08, h: 0.3, cup: 0.2, curl: 0.2, tip: 1, open: 0.5, r: 0.01, off: 0.5, color: '#f7b6cd' });
-        const sm = mat('#cde6b8');
-        const tipm = mat('#e8833a');
+      stemH: 1.15, leaves: 2, long: true,
+      tones: [['#fde2ec', '#f7b6cd'], ['#ff9a4d', '#ffb77a'], ['#ffffff', '#f4f4f4'], ['#ffd6a5', '#ffc38a']],
+      build(h, P, c) {
+        ringPetals(h, P, { n: 6, w: 0.15, h: 0.42, cup: 0.35, curl: 0.35, tip: 1, open: 0.75, r: 0.02, color: c[0] });
+        ringPetals(h, P, { n: 3, w: 0.08, h: 0.3, cup: 0.2, curl: 0.2, tip: 1, open: 0.5, r: 0.01, off: 0.5, color: c[1] });
+        const sm = mat('#cde6b8'), tipm = mat('#e8833a');
         for (let i = 0; i < 6; i++) {
-          const a = (i / 6) * Math.PI * 2;
           const g = new THREE.Group();
-          g.rotation.y = a;
-          const s = cyl(0.006, 0.006, 0.28, 5, sm, 0, 0.14, 0);
-          g.rotation.x = 0; s.rotation.x = 0.35; s.position.z = 0.05;
+          g.rotation.y = (i / 6) * Math.PI * 2;
+          const st = cyl(0.006, 0.006, 0.28, 5, sm, 0, 0.14, 0.05);
+          st.rotation.x = 0.35;
           const tp = sph(0.018, tipm, 0, 0.27, 0.14);
           tp.scale.set(0.7, 1.4, 0.7);
-          g.add(s, tp); h.add(g);
+          g.add(st, tp); h.add(g);
         }
       },
     },
     peonia: {
-      stemH: 1.0, leaves: 3, color: '#f7a6c1',
-      build(h, P) {
-        const c = ['#f06c9b', '#f48fb1', '#f7a6c1', '#f9bfd2', '#fcd5e3'];
-        const rings = [[4, 0.1, 0.13, 0.1], [6, 0.14, 0.17, 0.4], [7, 0.18, 0.2, 0.7], [8, 0.21, 0.22, 1.0], [9, 0.23, 0.23, 1.3]];
-        rings.forEach(([n, w, hh, open], k) =>
+      stemH: 1.0, leaves: 3,
+      tones: [
+        ['#f06c9b', '#f48fb1', '#f7a6c1', '#f9bfd2', '#fcd5e3'],
+        ['#fbe5ec', '#fdeef2', '#fff5f7', '#ffffff', '#ffffff'],
+        ['#ff7f6e', '#ff9282', '#ffa697', '#ffbaad', '#ffcdc3'],
+      ],
+      build(h, P, c) {
+        [[4, 0.1, 0.13, 0.1], [6, 0.14, 0.17, 0.4], [7, 0.18, 0.2, 0.7], [8, 0.21, 0.22, 1.0], [9, 0.23, 0.23, 1.3]].forEach(([n, w, hh, open], k) =>
           ringPetals(h, P, { n, w, h: hh, cup: 0.6, curl: 0.1, tip: 0.85, open, r: 0.015 * k, off: k * 0.6, ruffle: 0.08, color: c[k] }));
       },
     },
     luna: {
-      stemH: 1.1, leaves: 2, color: '#cfe8ff',
-      build(h, P) {
-        ringPetals(h, P, { n: 6, w: 0.16, h: 0.38, cup: 0.35, curl: 0.3, tip: 1, open: 0.9, r: 0.02, color: '#e8f4ff', glow: '#9fd0ff' });
-        ringPetals(h, P, { n: 5, w: 0.1, h: 0.24, cup: 0.4, curl: 0.1, tip: 1, open: 0.45, off: 0.3, color: '#f3e8ff', glow: '#d6b8ff' });
-        const c = sph(0.05, mat('#ffffff', { emissive: '#fff1a8', emissiveIntensity: 1 }), 0, 0.06, 0);
-        h.add(c);
+      stemH: 1.1, leaves: 2,
+      tones: [['#e8f4ff', '#f3e8ff', '#9fd0ff', '#d6b8ff']],
+      build(h, P, c) {
+        ringPetals(h, P, { n: 6, w: 0.16, h: 0.38, cup: 0.35, curl: 0.3, tip: 1, open: 0.9, r: 0.02, color: c[0], glow: c[2] });
+        ringPetals(h, P, { n: 5, w: 0.1, h: 0.24, cup: 0.4, curl: 0.1, tip: 1, open: 0.45, off: 0.3, color: c[1], glow: c[3] });
+        h.add(sph(0.05, mat('#ffffff', { emissive: '#fff1a8', emissiveIntensity: 1 }), 0, 0.06, 0));
       },
     },
+    cerezo: { tree: true, slots: 3, stemH: 1.1, tones: [['#ffc1d9', '#ffd6e6', '#ffe6ef', '#f7a8c4'], ['#ffffff', '#fff3f7', '#ffe9f1', '#fde0ea']] },
+    jacaranda: { tree: true, slots: 3, stemH: 1.2, tones: [['#a78bdb', '#b9a0e6', '#9575cd', '#c5b3ee']] },
   };
+
+  function branchGeo(a, b, r) {
+    const mid = a.clone().lerp(b, 0.5).add(new THREE.Vector3(0, 0.08, 0));
+    return new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(a, mid, b), 6, r, 5, false);
+  }
+
+  function buildTree(type, def, c) {
+    const V = THREE.Vector3;
+    const root = new THREE.Group();
+    const P = [];
+    const H = def.stemH;
+    const bend = Math.round(rnd(-0.12, 0.12) * 50) / 50;
+    const bark = mat('#8a5a3c', { roughness: 0.95 });
+    const trunk = new THREE.Mesh(stemGeo(H, bend, 0.075), bark);
+    root.add(trunk, cyl(0.09, 0.15, 0.12, 8, bark, 0, 0.06, 0));
+    const headPivot = new THREE.Group();
+    headPivot.position.set(bend, H, 0);
+    root.add(headPivot);
+    const canopy = new THREE.Group();
+    canopy.rotation.y = rnd(0, 6.28);
+    headPivot.add(canopy);
+    const ends = [new V(0, 0.72, 0)];
+    canopy.add(new THREE.Mesh(branchGeo(new V(0, 0, 0), ends[0], 0.05), bark));
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2 + rnd(-0.3, 0.3);
+      const len = rnd(0.45, 0.75), up = rnd(0.2, 0.55);
+      const e = new V(Math.cos(a) * len, up, Math.sin(a) * len);
+      canopy.add(new THREE.Mesh(branchGeo(new V(0, rnd(0, 0.25), 0), e, 0.035), bark));
+      ends.push(e);
+    }
+    ends.forEach((e) => {
+      for (let k = 0; k < 7; k++) {
+        const s = sph([0.13, 0.17, 0.21][k % 3], mat(c[k % c.length], { roughness: 0.85 }), e.x + rnd(-0.17, 0.17), e.y + rnd(-0.06, 0.18), e.z + rnd(-0.17, 0.17));
+        canopy.add(scaleBud(s)); P.push(s);
+      }
+      canopy.add(sph(0.09, mat('#8fcf9a'), e.x + rnd(-0.2, 0.2), e.y - 0.05, e.z + rnd(-0.2, 0.2)));
+    });
+    root.userData = {
+      kind: 'flower', type, petals: P, stem: trunk, headPivot, stemH: H, tree: true,
+      wob: { a: 0, v: 0, b: 0, w: 0 }, phase: Math.random() * 6.28, color: c[0],
+    };
+    return root;
+  }
 
   function buildFlower(type, opts = {}) {
     const def = FLOWERS[type] || FLOWERS.margarita;
+    const ti = Math.max(0, Math.min(def.tones.length - 1, opts.tone | 0));
+    const c = def.tones[ti];
+    if (def.tree) return buildTree(type, def, c);
     const root = new THREE.Group();
     const petals = [];
     const stemH = opts.stemH || def.stemH;
-    const bend = (Math.random() - 0.5) * 0.14;
+    const bend = Math.round(((Math.random() - 0.5) * 0.14) * 50) / 50;
     const stem = new THREE.Mesh(stemGeo(stemH, bend, def.stemR || 0.026), mat('#5fae7c', { roughness: 0.8 }));
     root.add(stem);
     const headPivot = new THREE.Group();
@@ -295,12 +410,12 @@ window.Models = (() => {
     head.rotation.y = Math.random() * Math.PI * 2;
     headPivot.add(head);
     root.add(headPivot);
-    def.build(head, petals);
-    if (!opts.noLeaves) addLeaves(root, def.leaves || 2, stemH, def.long);
+    def.build(head, petals, c);
+    if (!opts.noLeaves && def.leaves) addLeaves(root, def.leaves, stemH, def.long);
     if (opts.headScale) headPivot.scale.setScalar(opts.headScale);
     root.userData = {
       kind: 'flower', type, petals, stem, headPivot, stemH,
-      wob: { a: 0, v: 0, b: 0, w: 0 }, phase: Math.random() * 6.28, color: def.color,
+      wob: { a: 0, v: 0, b: 0, w: 0 }, phase: Math.random() * 6.28, color: c[0],
     };
     return root;
   }
@@ -309,6 +424,77 @@ window.Models = (() => {
     f.userData.stem.scale.y = s;
     f.userData.headPivot.position.y = f.userData.stemH * s;
   }
+
+  /** Ramillete de hojas anchas para rellenar la orilla del ramo. */
+  function buildFern() {
+    const g = new THREE.Group();
+    const cols = ['#6fbf8a', '#86c99a', '#5fae7c'];
+    const lg = petalGeo(0.2, 0.46, 0.35, 0.2, 1);
+    for (let i = 0; i < 3; i++) {
+      const piv = new THREE.Group();
+      piv.rotation.y = (i - 1) * 0.55;
+      const l = new THREE.Mesh(lg, pmat(cols[i]));
+      l.rotation.x = 0.35 + i * 0.08;
+      l.scale.setScalar(1 - Math.abs(i - 1) * 0.15);
+      piv.add(l); g.add(piv);
+    }
+    return g;
+  }
+
+  // ---------- Obstáculos (se quitan con la pala) ----------
+  function buildObstacle(type) {
+    const g = new THREE.Group();
+    if (type === 'tronco') {
+      const bark = mat('#8a5a3c', { roughness: 1 });
+      g.add(cyl(0.26, 0.3, 0.34, 14, bark, 0, 0.17, 0));
+      g.add(cyl(0.245, 0.245, 0.02, 14, mat('#e2bf95'), 0, 0.345, 0));
+      const ring = new THREE.Mesh(cached(geoCache, 'stumpRing', () => new THREE.TorusGeometry(0.13, 0.01, 4, 20)), mat('#c49a6c'));
+      ring.rotation.x = Math.PI / 2; ring.position.y = 0.356;
+      g.add(ring);
+      for (let i = 0; i < 4; i++) {
+        const r = cyl(0.05, 0.08, 0.35, 6, bark, 0, 0.05, 0);
+        const a = i * 1.6 + 0.3;
+        r.position.set(Math.cos(a) * 0.3, 0.04, Math.sin(a) * 0.3);
+        r.rotation.set(Math.sin(a) * 1.2, 0, -Math.cos(a) * 1.2);
+        g.add(r);
+      }
+      g.add(sph(0.04, mat('#ff6f91'), 0.08, 0.38, 0.05));
+    } else if (type === 'maleza') {
+      const m = pmat('#4e8c5a'), m2 = pmat('#6b9e5e');
+      const bg = petalGeo(0.07, 0.48, 0.2, 0.3, 1);
+      for (let i = 0; i < 14; i++) {
+        const piv = new THREE.Group();
+        piv.rotation.y = i * 2.4;
+        piv.position.set(rnd(-0.12, 0.12), 0, rnd(-0.12, 0.12));
+        const b = new THREE.Mesh(bg, i % 2 ? m : m2);
+        b.rotation.x = rnd(0.2, 0.7);
+        b.scale.setScalar(rnd(0.7, 1.2));
+        piv.add(b); g.add(piv);
+      }
+      for (let i = 0; i < 3; i++) {
+        const t = cyl(0.01, 0.015, 0.5, 4, mat('#7a5a3a'), rnd(-0.1, 0.1), 0.22, rnd(-0.1, 0.1));
+        t.rotation.set(rnd(-0.4, 0.4), 0, rnd(-0.4, 0.4));
+        g.add(t);
+      }
+    } else {
+      const m = mat('#b7aab8', { roughness: 1, flatShading: true });
+      const m2 = mat('#a497a6', { roughness: 1, flatShading: true });
+      const dg = cached(geoCache, 'dodec', () => new THREE.DodecahedronGeometry(0.3, 0));
+      [[0, 0, 1, m], [0.3, 0.1, 0.55, m2], [-0.2, 0.25, 0.4, m2]].forEach(([x, z, s, mm]) => {
+        const r = new THREE.Mesh(dg, mm);
+        r.scale.set(1.2 * s, 0.7 * s, s);
+        r.position.set(x, 0.15 * s, z);
+        r.rotation.set(rnd(0, 3), rnd(0, 3), rnd(0, 3));
+        g.add(r);
+      });
+    }
+    g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    g.userData.kind = 'obstacle';
+    g.userData.type = type;
+    return g;
+  }
+
+  const grassGeo = () => petalGeo(0.05, 0.3, 0.15, 0.25, 1);
 
   // ---------- Decoraciones ----------
   function heartShape() {
@@ -428,13 +614,17 @@ window.Models = (() => {
       const w = woodMat('#c98d5e');
       g.add(box(0.07, 0.9, 0.07, w, -0.38, 0.45, 0));
       g.add(box(0.07, 0.9, 0.07, w, 0.38, 0.45, 0));
-      g.add(box(0.98, 0.4, 0.05, w, 0, 0.72, 0));
-      const face = new THREE.Mesh(cached(geoCache, 'signFace', () => new THREE.PlaneGeometry(0.94, 0.36)),
-        new THREE.MeshStandardMaterial({ map: signTexture(opts.text || 'Nuestro jardín'), roughness: 0.9 }));
-      face.position.set(0, 0.72, 0.027);
-      g.add(face);
+      g.add(box(0.98, 0.4, 0.05, woodMat('#e8b88f'), 0, 0.72, 0));
+      const text = (opts.text || '').trim();
+      if (text) {
+        const face = new THREE.Mesh(cached(geoCache, 'signFace', () => new THREE.PlaneGeometry(0.94, 0.36)),
+          new THREE.MeshStandardMaterial({ map: signTexture(text), roughness: 0.9 }));
+        face.position.set(0, 0.72, 0.027);
+        g.add(face);
+      }
       g.add(sph(0.05, mat('#ff6f9c'), 0.42, 0.93, 0.03));
       g.add(sph(0.04, mat('#ffd166'), 0.34, 0.95, 0.03));
+      g.add(sph(0.035, mat('#8fd3b6'), -0.4, 0.94, 0.03));
       return g;
     },
     casita() {
@@ -524,6 +714,59 @@ window.Models = (() => {
       }
       return g;
     },
+    caminito() {
+      const g = new THREE.Group();
+      const m = mat('#e9dde6', { roughness: 1, flatShading: true });
+      for (let i = 0; i < 4; i++) {
+        const st = new THREE.Mesh(cylGeo(0.22, 0.24, 0.06, 9), m);
+        st.position.set(rnd(-0.1, 0.1), 0.03, -0.75 + i * 0.5);
+        st.rotation.y = rnd(0, 3);
+        st.scale.set(rnd(0.85, 1.1), 1, rnd(0.8, 1.05));
+        g.add(st);
+      }
+      return g;
+    },
+    arbusto() {
+      const g = new THREE.Group();
+      const greens = ['#7cc594', '#8fd3a6', '#6fb987'];
+      [[0, 0.3, 0, 0.34], [0.25, 0.22, 0.1, 0.26], [-0.24, 0.22, -0.05, 0.27], [0.05, 0.22, 0.25, 0.24], [-0.05, 0.2, -0.26, 0.24]].forEach(([x, y, z, r], i) => {
+        const b = new THREE.Mesh(sphereGeo(1, 14, 10), mat(greens[i % 3], { roughness: 0.95 }));
+        b.scale.setScalar(r); b.position.set(x, y, z);
+        g.add(b);
+      });
+      const cols = ['#ff8fb1', '#ffffff', '#ffd166'];
+      for (let i = 0; i < 14; i++) {
+        const y = rnd(0.15, 1), a = rnd(0, 6.28), rr = Math.sqrt(1 - y * y);
+        g.add(sph(0.035, mat(cols[i % 3]), Math.cos(a) * rr * 0.38, 0.3 + y * 0.3, Math.sin(a) * rr * 0.38));
+      }
+      return g;
+    },
+    estanque() {
+      const g = new THREE.Group();
+      const dg = cached(geoCache, 'pebble', () => new THREE.DodecahedronGeometry(0.1, 0));
+      const sm = mat('#cfc3d0', { roughness: 1, flatShading: true });
+      for (let i = 0; i < 14; i++) {
+        const a = (i / 14) * Math.PI * 2;
+        const r = new THREE.Mesh(dg, sm);
+        r.position.set(Math.cos(a) * 0.62, 0.05, Math.sin(a) * 0.62);
+        r.scale.set(rnd(0.9, 1.3), 0.6, rnd(0.9, 1.3));
+        r.rotation.set(rnd(0, 3), rnd(0, 3), 0);
+        g.add(r);
+      }
+      g.add(cyl(0.6, 0.6, 0.03, 28, mat('#9fd8ef', { transparent: true, opacity: 0.85, roughness: 0.1 }), 0, 0.035, 0));
+      const padG = cached(geoCache, 'pad', () => new THREE.CircleGeometry(0.11, 18, 0.4, Math.PI * 2 - 0.4));
+      [[0.2, 0.1], [-0.18, -0.15], [0.05, -0.28]].forEach(([x, z], i) => {
+        const p = new THREE.Mesh(padG, pmat('#7cc594'));
+        p.rotation.set(-Math.PI / 2, 0, i * 2);
+        p.position.set(x, 0.055, z);
+        g.add(p);
+      });
+      const fl = new THREE.Group();
+      fl.position.set(0.2, 0.06, 0.1);
+      ringPetals(fl, [], { n: 6, w: 0.05, h: 0.08, cup: 0.4, open: 0.9, color: '#ffc1d9' });
+      g.add(fl);
+      return g;
+    },
     fuente() {
       const g = new THREE.Group();
       const stone = mat('#f3d5de', { roughness: 0.9 });
@@ -581,11 +824,37 @@ window.Models = (() => {
     return g;
   }
 
+  // ---------- Pala ----------
+  function buildShovel() {
+    const g = new THREE.Group();
+    const inner = new THREE.Group();
+    inner.position.y = 0.15;
+    g.add(inner);
+    const wood = woodMat('#c98d5e');
+    const metal = mat('#b9c6cc', { metalness: 0.6, roughness: 0.3 });
+    inner.add(cyl(0.025, 0.025, 1.0, 8, wood, 0, 0.62, 0));
+    inner.add(box(0.22, 0.045, 0.045, mat('#e0668f'), 0, 1.14, 0));
+    inner.add(box(0.035, 0.12, 0.035, mat('#e0668f'), -0.09, 1.09, 0));
+    inner.add(box(0.035, 0.12, 0.035, mat('#e0668f'), 0.09, 1.09, 0));
+    inner.add(cyl(0.04, 0.05, 0.12, 10, metal, 0, 0.16, 0));
+    const s = new THREE.Shape();
+    s.moveTo(-0.12, 0.12); s.lineTo(0.12, 0.12);
+    s.quadraticCurveTo(0.13, -0.06, 0, -0.15);
+    s.quadraticCurveTo(-0.13, -0.06, -0.12, 0.12);
+    const blade = new THREE.Mesh(new THREE.ExtrudeGeometry(s, { depth: 0.015, bevelEnabled: false }), metal);
+    blade.position.z = -0.008;
+    inner.add(blade);
+    g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    return g;
+  }
+
   return {
-    mat, pmat, woodMat, dirtMat, petalGeo, sphereGeo, boxGeo,
-    buildFlower, setStemStretch, buildDecor, buildCan,
+    mat, pmat, woodMat, dirtMat, petalGeo, sphereGeo, boxGeo, grassGeo,
+    buildFlower, setStemStretch, buildDecor, buildCan, buildShovel, buildFern, buildObstacle,
     FLOWER_TYPES: Object.keys(FLOWERS),
     DECOR_TYPES: Object.keys(DECOR),
-    flowerColor: (t) => (FLOWERS[t] || FLOWERS.margarita).color,
+    isTree: (t) => !!(FLOWERS[t] && FLOWERS[t].tree),
+    toneCount: (t) => (FLOWERS[t] ? FLOWERS[t].tones.length : 1),
+    flowerColor: (t, tone = 0) => { const f = FLOWERS[t] || FLOWERS.margarita; return f.tones[Math.min(tone, f.tones.length - 1)][0]; },
   };
 })();

@@ -154,6 +154,7 @@ h1, h2, h3 { font-family: "Sniglet", "Arial Rounded MT Bold", system-ui, sans-se
   content: ""; position: absolute; inset: 8px 0 8px 8px; border: 2px dashed #f4b6cc; border-right: 0;
   border-radius: 22px 0 0 22px; pointer-events: none;
 }
+#drawer:not(.open) { pointer-events: none; }
 #drawer.open { transform: none; }
 .drawer-head { display: flex; align-items: center; gap: 10px; }
 .drawer-head h2 { font-size: 1.6rem; font-weight: 800; color: var(--berry); flex: 1; }
@@ -179,10 +180,10 @@ h1, h2, h3 { font-family: "Sniglet", "Arial Rounded MT Bold", system-ui, sans-se
 .land { background: #fff; border-radius: 18px; padding: 16px; box-shadow: 0 2px 0 #f6cddc; display: grid; gap: 10px; }
 .land p { margin: 0; line-height: 1.45; }
 .land-grid {
-  display: grid; grid-template-columns: repeat(var(--n), 1fr); gap: 4px; width: 140px; margin: 0 auto 4px;
-  padding: 8px; border-radius: 10px; background: #c98d5e;
+  width: calc(26px * var(--n)); aspect-ratio: 1; margin: 0 auto 4px; border-radius: 10px;
+  background: radial-gradient(circle at 30% 40%, #9a6a48 0 3px, transparent 4px) 0 0 / 22px 22px, #8d5f3f;
+  box-shadow: 0 0 0 8px #c98d5e, 0 10px 0 8px #a86f45;
 }
-.land-grid i { aspect-ratio: 1; background: #8d5f3f; border-radius: 3px; }
 
 /* ---------- Mochila ---------- */
 #bag {
@@ -245,3 +246,27 @@ body[data-mode="move"] #scene { cursor: grab; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+.tag { display: inline-block; margin-top: 4px; font-size: .72rem; padding: 2px 8px; border-radius: 999px; background: #fde3ec; color: var(--berry); }
+.note.warn { color: var(--berry); opacity: 1; background: #fde3ec; padding: 8px 10px; border-radius: 12px; margin: 0; }
+.btn.danger { background: #c2415f; box-shadow: 0 4px 0 #7d1f38, inset 0 2px 0 rgba(255,255,255,.3); }
+
+#modal {
+  position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 20px;
+  background: rgba(90,33,64,.3);
+}
+.modal-card {
+  width: min(360px, 100%); background: var(--petal); border-radius: 26px; padding: 22px 20px 18px;
+  box-shadow: 0 0 0 2px #f6cddc, 0 20px 40px rgba(90,33,64,.25); animation: pop .25s cubic-bezier(.3,1.5,.5,1);
+  position: relative;
+}
+.modal-card::before { content: ""; position: absolute; inset: 7px; border: 2px dashed #f4b6cc; border-radius: 20px; pointer-events: none; }
+.modal-card h2 { font-size: 1.4rem; color: var(--berry); }
+.modal-card p { margin: 8px 0 14px; line-height: 1.45; font-size: .95rem; }
+#modalInput {
+  width: 100%; font: 800 1.2rem "Sniglet", sans-serif; color: var(--berry); text-align: center;
+  padding: 12px; border-radius: 14px; border: 2px solid #f6cddc; background: #fff; margin-bottom: 14px;
+  -webkit-user-select: text; user-select: text;
+}
+#modalInput:focus { outline: 3px solid var(--rose); outline-offset: 1px; }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
