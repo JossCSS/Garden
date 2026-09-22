@@ -158,9 +158,10 @@ h1, h2, h3 { font-family: "Sniglet", "Arial Rounded MT Bold", system-ui, sans-se
 #drawer.open { transform: none; }
 .drawer-head { display: flex; align-items: center; gap: 10px; }
 .drawer-head h2 { font-size: 1.6rem; font-weight: 800; color: var(--berry); flex: 1; }
-.tabs { display: flex; gap: 4px; background: #fbe1ea; border-radius: 16px; padding: 4px; }
+.tabs { display: flex; gap: 4px; background: #fbe1ea; border-radius: 16px; padding: 4px; overflow-x: auto; scrollbar-width: none; flex: none; }
+.tabs::-webkit-scrollbar { display: none; }
 .tabs button {
-  flex: 1; border: 0; background: transparent; border-radius: 12px; padding: 8px 2px; font-size: .8rem; color: var(--berry);
+  flex: 1 0 auto; border: 0; background: transparent; border-radius: 12px; padding: 8px 10px; font-size: .8rem; color: var(--berry);
 }
 .tabs button[aria-selected="true"] { background: #fff; box-shadow: 0 2px 0 #f1bfd1; font-weight: 600; }
 .drawer-body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; gap: 10px; padding: 2px 2px 8px; }
@@ -270,3 +271,8 @@ body[data-mode="move"] #scene { cursor: grab; }
 }
 #modalInput:focus { outline: 3px solid var(--rose); outline-offset: 1px; }
 .modal-actions { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+
+.shop-h { font-size: 1rem; color: var(--rose-deep); margin: 8px 4px 0; }
+.shop-h:first-child { margin-top: 0; }
+
+.nowrap { display: inline-block; }

@@ -49,8 +49,16 @@
     { id: 'lirio', name: 'Lirio', price: 50, desc: 'Pétalos largos que se curvan.' },
     { id: 'peonia', name: 'Peonía', price: 65, desc: 'Llena de pétalos, suave como nube.' },
     { id: 'luna', name: 'Flor de luna', price: 120, desc: 'Brilla un poquito, incluso de día.' },
-    { id: 'cerezo', name: 'Cerezo', price: 150, desc: 'Árbol de flores rosas. Ocupa más espacio.' },
-    { id: 'jacaranda', name: 'Jacaranda', price: 170, desc: 'Árbol de flores moradas. Ocupa más espacio.' },
+    { id: 'trebol', name: 'Trébol', price: 8, desc: 'Una alfombrita verde con florecitas.', group: 'planta' },
+    { id: 'suculenta', name: 'Suculenta', price: 15, desc: 'Roseta gordita, casi no pide agua.', group: 'planta' },
+    { id: 'pampa', name: 'Pasto de la pampa', price: 20, desc: 'Hojas largas y plumas suaves.', group: 'planta' },
+    { id: 'helecho', name: 'Helecho', price: 22, desc: 'Hojas rizadas y frondosas.', group: 'planta' },
+    { id: 'cactus', name: 'Cactus', price: 25, desc: 'Con bracitos y una flor arriba.', group: 'planta' },
+    { id: 'fresa', name: 'Fresas', price: 30, desc: 'Hojitas, flores y fresas rojas.', group: 'planta' },
+    { id: 'bambu', name: 'Bambú', price: 45, desc: 'Tallos altos con nudos.', group: 'planta' },
+    { id: 'monstera', name: 'Monstera', price: 55, desc: 'Hojas grandes y brillantes.', group: 'planta' },
+    { id: 'cerezo', name: 'Cerezo', price: 150, desc: 'Árbol de flores rosas. Ocupa más espacio.', group: 'arbol' },
+    { id: 'jacaranda', name: 'Jacaranda', price: 170, desc: 'Árbol de flores moradas. Ocupa más espacio.', group: 'arbol' },
   ];
   const DECOR = [
     { id: 'caminito', name: 'Caminito de piedras', price: 30, desc: 'Piedras planas para pisar.' },
@@ -69,6 +77,23 @@
     { id: 'arco', name: 'Arco de flores', price: 220, desc: 'Una entrada llena de flores.' },
     { id: 'fuente', name: 'Fuente', price: 300, desc: 'Agua que salta sin parar.' },
   ];
+  SEEDS.forEach((s) => { if (!s.group) s.group = 'flor'; });
+
+  // Mascotas: la n-ésima mascota se puede adoptar desde el nivel PET_LEVELS[n]
+  const PETS = [
+    { id: 'gato', name: 'Gatito', price: 80, desc: 'Curioso, con la cola siempre arriba.' },
+    { id: 'perro', name: 'Perrito', price: 90, desc: 'Orejas caídas y muchas ganas de pasear.' },
+    { id: 'conejo', name: 'Conejito', price: 100, desc: 'Va dando saltitos por todo el pasto.' },
+    { id: 'pato', name: 'Patito', price: 110, desc: 'Camina de lado a lado.' },
+    { id: 'pinguino', name: 'Pingüino', price: 130, desc: 'Se tambalea y mueve las aletas.' },
+    { id: 'cerdito', name: 'Cerdito', price: 140, desc: 'Rosita, con la colita enrollada.' },
+    { id: 'zorro', name: 'Zorrito', price: 160, desc: 'Cola esponjada con punta blanca.' },
+    { id: 'panda', name: 'Panda', price: 200, desc: 'Tranquilo y redondito.' },
+  ];
+  const PET_LEVELS = [1, 3, 5, 7, 9, 12, 15, 18];
+  const petInfo = (id) => PETS.find((p) => p.id === id);
+  const petCap = (lvl) => PET_LEVELS.filter((l) => lvl >= l).length;
+
   const seedInfo = (id) => SEEDS.find((s) => s.id === id);
   const decorInfo = (id) => DECOR.find((d) => d.id === id);
   const isTree = (t) => Models.isTree(t);
@@ -76,9 +101,10 @@
 
   // Ramo inicial: tipo y tono
   const BOUQUET = [
-    ['rosa', 0], ['peonia', 0], ['rosa', 2], ['tulipan', 0], ['lirio', 0], ['hortensia', 1], ['rosa', 4],
-    ['margarita', 0], ['clavel', 0], ['lavanda', 0], ['cosmos', 0], ['peonia', 1], ['rosa', 0], ['tulipan', 3],
-    ['campanilla', 0], ['amapola', 2], ['hortensia', 0],
+    ['peonia', 0],
+    ['rosa', 0], ['lirio', 0], ['rosa', 2], ['peonia', 1], ['lirio', 3], ['rosa', 4], ['clavel', 0],
+    ['tulipan', 0], ['lirio', 2], ['rosa', 0], ['hortensia', 1], ['cosmos', 0], ['rosa', 2], ['peonia', 2], ['lirio', 0], ['clavel', 2],
+    ['margarita', 0], ['rosa', 4], ['tulipan', 3], ['lavanda', 0], ['lirio', 3], ['rosa', 0], ['campanilla', 0], ['amapola', 2], ['hortensia', 0], ['rosa', 2], ['cosmos', 2], ['lirio', 2],
   ];
 
   // Medidas del macetero
@@ -114,7 +140,7 @@
     const s = {
       v: 2, placed: false, coins: CFG.startCoins, xp: 0, level: 1, grid: CFG.startGrid, heightCap: 0,
       streak: 0, lastWaterDay: null, plants: [], grass: [], seeds: { margarita: 2 }, bag: {}, decor: [],
-      obstacles: [], nextId: 1, updatedAt: 0,
+      obstacles: [], pets: [], nextId: 1, updatedAt: 0,
     };
     s.obstacles = genObstacles(s);
     return s;
@@ -141,6 +167,7 @@
     o.grass = Array.isArray(o.grass) ? o.grass.slice(0, CFG.grassMax) : [];
     o.decor = (Array.isArray(o.decor) ? o.decor : []).filter((d) => d && Models.DECOR_TYPES.includes(d.type));
     o.obstacles = Array.isArray(o.obstacles) ? o.obstacles : [];
+    o.pets = (Array.isArray(o.pets) ? o.pets : []).filter((p) => p && Models.PET_TYPES.includes(p.type));
     o.seeds = o.seeds && typeof o.seeds === 'object' ? o.seeds : {};
     o.bag = o.bag && typeof o.bag === 'object' ? o.bag : {};
     o.v = 2;
@@ -527,16 +554,13 @@
   scene.add(bouquet);
   const bouquetFlowers = [];
   (function buildBouquet() {
-    const layout = [
-      { a: 0, tilt: 0, h: 2.2 },
-      ...[0, 1, 2, 3, 4, 5].map((i) => ({ a: (i / 6) * Math.PI * 2 + 0.2, tilt: 0.2, h: 2.1 })),
-      ...[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => ({ a: (i / 10) * Math.PI * 2 + 0.5, tilt: 0.4, h: 1.92 })),
-    ];
+    const ringOf = (n, tilt, h, off) => Array.from({ length: n }, (_, i) => ({ a: (i / n) * Math.PI * 2 + off, tilt, h }));
+    const layout = [{ a: 0, tilt: 0, h: 2.22 }, ...ringOf(7, 0.17, 2.14, 0.2), ...ringOf(9, 0.33, 2.02, 0.5), ...ringOf(12, 0.5, 1.86, 0.1)];
     layout.forEach((l, i) => {
       const [type, tone] = BOUQUET[i];
       const holder = new THREE.Group();
       holder.rotation.y = l.a;
-      const hs = { hortensia: 1.05, lavanda: 1.3, campanilla: 1.35 }[type] || 1.5;
+      const hs = { hortensia: 1.1, lavanda: 1.4, campanilla: 1.45, lirio: 1.45 }[type] || 1.7;
       const f = Models.buildFlower(type, { stemH: l.h + rand(-0.05, 0.05), noLeaves: true, headScale: hs, tone });
       f.rotation.x = l.tilt + rand(-0.04, 0.04);
       f.position.y = -0.62;
@@ -544,21 +568,36 @@
       bouquet.add(holder);
       bouquetFlowers.push(f);
     });
+    // domo de follaje detrás de las flores, para que no se vean huecos
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.95, 28, 14, 0, Math.PI * 2, 0, Math.PI / 2), Models.mat('#5fa877', { roughness: 0.9 }));
+    dome.scale.set(1, 0.55, 1);
+    dome.position.y = 0.72;
+    bouquet.add(dome);
+    const leafG = Models.petalGeo(0.16, 0.3, 0.3, 0.15, 1);
+    for (let i = 0; i < 40; i++) {
+      const y = rand(0.1, 0.95), a = rand(0, Math.PI * 2), rr = Math.sqrt(1 - y * y);
+      const piv = new THREE.Group();
+      piv.position.set(Math.cos(a) * rr * 0.9, 0.72 + y * 0.5, Math.sin(a) * rr * 0.9);
+      piv.rotation.y = -a + Math.PI / 2;
+      const l = new THREE.Mesh(leafG, Models.pmat(pick(['#6fbf8a', '#7cc594', '#5fae7c'])));
+      l.rotation.x = rand(0.6, 1.2);
+      piv.add(l); bouquet.add(piv);
+    }
     // relleno: nube (gypsophila) entre las flores
-    for (let i = 0; i < 9; i++) {
+    for (let i = 0; i < 14; i++) {
       const holder = new THREE.Group();
-      holder.rotation.y = (i / 9) * Math.PI * 2 + 0.15;
-      const f = Models.buildFlower('nube', { stemH: 1.95, noLeaves: true, headScale: 1.15 });
-      f.rotation.x = 0.33 + (i % 2) * 0.12;
+      holder.rotation.y = (i / 14) * Math.PI * 2 + 0.15;
+      const f = Models.buildFlower('nube', { stemH: 1.95 + (i % 3) * 0.08, noLeaves: true, headScale: 1.3, tone: i % 3 === 0 ? 1 : 0 });
+      f.rotation.x = 0.25 + (i % 3) * 0.13;
       f.position.y = -0.62;
       holder.add(f);
       bouquet.add(holder);
       bouquetFlowers.push(f);
     }
     // helechos asomándose por la orilla
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 12; i++) {
       const holder = new THREE.Group();
-      holder.rotation.y = (i / 8) * Math.PI * 2 + 0.4;
+      holder.rotation.y = (i / 12) * Math.PI * 2 + 0.4;
       const fern = Models.buildFern();
       fern.rotation.x = 0.55;
       fern.position.set(0, 0.62, 0.72);
@@ -833,6 +872,8 @@
     state.decor.forEach((d) => spawnDecor(d, false));
     state.obstacles.forEach((o) => spawnObstacle(o));
     rebuildGrass();
+    petsGroup.clear();
+    state.pets.forEach((p) => spawnPet(p));
   }
   function blockingObstacles(n) {
     const lim = baseHalfOf(n) + 0.35;
@@ -854,6 +895,93 @@
   selRing.rotation.x = -Math.PI / 2;
   selRing.visible = false;
   scene.add(selRing);
+
+  // ---------- Mascotas que pasean ----------
+  const petsGroup = new THREE.Group();
+  garden.add(petsGroup);
+  const PET_SPEED = { conejo: 0.55, perro: 0.5, gato: 0.42, zorro: 0.5, pato: 0.3, pinguino: 0.25, cerdito: 0.32, panda: 0.22 };
+  const petBlocked = (x, z) => { const k = half() + FRAME_T + 0.2; return Math.abs(x) < k && Math.abs(z) < k; };
+  function petTarget(from) {
+    const R = half() + 4.3;
+    for (let k = 0; k < 40; k++) {
+      let x, z;
+      if (from && Math.random() < 0.6) { x = from.x + rand(-2, 2); z = from.z + rand(-2, 2); }
+      else { const a = rand(0, Math.PI * 2), r = rand(half() + 0.6, R); x = Math.cos(a) * r; z = Math.sin(a) * r; }
+      if (Math.hypot(x, z) > R || petBlocked(x, z) || obstacleNear(x, z)) continue;
+      return new V3(x, 0, z);
+    }
+    return new V3(R * 0.8, 0, 0);
+  }
+  const groundY = (x, z) => (Math.abs(x) <= baseHalf() && Math.abs(z) <= baseHalf() ? BASE_H : 0);
+  function spawnPet(p) {
+    const o = Models.buildPet(p.type);
+    o.userData.petId = p.id;
+    o.userData.name = p.name;
+    const t = petTarget();
+    o.position.set(t.x, groundY(t.x, t.z), t.z);
+    o.rotation.y = rand(0, Math.PI * 2);
+    o.scale.setScalar(1.3);
+    o.userData.ai = { state: 'idle', t: rand(0.3, 2.5), target: null, speed: PET_SPEED[p.type] || 0.35, phase: rand(0, 6), jump: 0 };
+    petsGroup.add(o);
+    return o;
+  }
+  function updatePets(dt, t) {
+    for (const o of petsGroup.children) {
+      const u = o.userData, ai = u.ai;
+      let moving = false;
+      if (ai.state === 'idle') {
+        ai.t -= dt;
+        u.head.rotation.y = Math.sin(t * 0.7 + ai.phase) * 0.45;
+        if (ai.t <= 0) { ai.target = petTarget(o.position); ai.state = 'walk'; }
+      } else {
+        const dx = ai.target.x - o.position.x, dz = ai.target.z - o.position.z;
+        const d = Math.hypot(dx, dz);
+        if (d < 0.08) { ai.state = 'idle'; ai.t = rand(1.5, 5.5); }
+        else {
+          moving = true;
+          const step = Math.min(d, ai.speed * dt);
+          const nx = o.position.x + (dx / d) * step, nz = o.position.z + (dz / d) * step;
+          if (petBlocked(nx, nz)) ai.target = petTarget(o.position);
+          else { o.position.x = nx; o.position.z = nz; }
+          let diff = Math.atan2(dx, dz) - o.rotation.y;
+          diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+          o.rotation.y += diff * Math.min(1, dt * 6);
+          ai.phase += dt * (u.hop ? 9 : 12);
+          u.head.rotation.y *= 0.9;
+        }
+      }
+      const p = ai.phase;
+      if (u.biped) {
+        u.legs.forEach((l, i) => { l.rotation.x = moving ? Math.sin(p + i * Math.PI) * 0.6 : l.rotation.x * 0.85; });
+        u.root.rotation.z = moving ? Math.sin(p) * 0.14 : u.root.rotation.z * 0.9;
+        u.wings.forEach((w, i) => { w.rotation.z = (i ? -1 : 1) * (0.15 + (moving ? Math.abs(Math.sin(p * 2)) * 0.35 : 0)); });
+      } else {
+        const sw = [0, Math.PI, Math.PI, 0];
+        u.legs.forEach((l, i) => { l.rotation.x = moving ? (u.hop ? Math.sin(p) * 0.5 : Math.sin(p + sw[i]) * 0.55) : l.rotation.x * 0.85; });
+        if (u.tailPivot) u.tailPivot.rotation.y = Math.sin(t * (moving ? 9 : 4) + ai.phase) * 0.35;
+      }
+      let y = groundY(o.position.x, o.position.z);
+      if (u.hop && moving) y += Math.abs(Math.sin(p)) * 0.12;
+      else if (moving) u.root.position.y = Math.abs(Math.sin(p)) * 0.015;
+      if (ai.jump > 0) { ai.jump = Math.max(0, ai.jump - dt * 2.2); y += Math.sin((1 - ai.jump) * Math.PI) * 0.35; }
+      o.position.y = y;
+    }
+  }
+  async function adoptPet(id) {
+    const info = petInfo(id);
+    if (!info || state.pets.some((p) => p.type === id) || state.pets.length >= petCap(state.level) || state.coins < info.price) return;
+    closeDrawer();
+    const name = await askModal({ title: '¿Cómo se va a llamar?', text: `Tu ${info.name.toLowerCase()} necesita un nombre.`, input: true, value: info.name, ok: 'Adoptar' });
+    if (name === null) return;
+    state.coins -= info.price;
+    const p = { id: state.nextId++, type: id, name: (name.trim() || info.name).slice(0, 16) };
+    state.pets.push(p);
+    const o = spawnPet(p);
+    o.userData.ai.jump = 1;
+    spawnBurst(o.position.clone().add(new V3(0, 0.4, 0)), '#ff8fb1', 12);
+    toast(`¡${p.name} ya vive en tu jardín! Tócalo para saludarlo.`);
+    renderHUD(); renderShop(); save();
+  }
 
   // =====================================================================
   // Vista, modos y cámara
@@ -943,7 +1071,7 @@
     });
     if (lucky.length) parts.push(`${lucky.length === 1 ? 'una flor dio' : `${lucky.length} flores dieron`} un estirón`);
     // brota una flor nueva si hay espacio
-    const type = pick(SEEDS.filter((s) => s.price <= 50)).id;
+    const type = pick(SEEDS.filter((s) => s.group === 'flor' && s.price <= 50)).id;
     const spot = usedSlots() + 1 <= capacity() ? findSpot(type) : null;
     if (spot) {
       const p = newPlant(type, spot.x, spot.z, 0.15);
@@ -954,6 +1082,7 @@
       state.heightCap++;
       parts.push('tus flores ya pueden crecer más alto');
     }
+    if (petCap(state.level) > petCap(state.level - 1)) parts.push('y ya puedes adoptar otra mascota');
     toast(parts.join(', ') + '.');
   }
   function streakMultiplier() {
@@ -1257,9 +1386,16 @@
     if (mode === 'plant') { const p = bedPoint(e); if (p) plantSeedAt(p); return; }
     if (mode === 'place') { const p = groundPoint(e, 0); if (p) placeDecor(p); return; }
     if (mode === 'move') return;
-    const h = hit(e, [plantsGroup, decorGroup, obstGroup]);
+    const h = hit(e, [plantsGroup, decorGroup, obstGroup, petsGroup]);
     if (!h) { selectDecor(null); return; }
     const o = ownerOf(h.object);
+    if (o && o.userData.kind === 'pet') {
+      o.userData.ai.jump = 1;
+      o.userData.ai.state = 'idle'; o.userData.ai.t = 2;
+      floatText(o.position.clone().add(new V3(0, 0.8, 0)), `♥ ${o.userData.name}`, 'xp');
+      spawnBurst(o.position.clone().add(new V3(0, 0.5, 0)), '#ff8fb1', 6);
+      return;
+    }
     if (o && o.userData.kind === 'decor') {
       selectDecor(o);
       o.userData.sq.v += 4; springy.add(o);
@@ -1279,7 +1415,8 @@
   function seedFromBouquet() {
     const h = half() - 0.3;
     const centers = [0, 1, 2].map(() => ({ x: rand(-h * 0.6, h * 0.6), z: rand(-h * 0.6, h * 0.6), s: pick([0.22, 0.35, 0.6]) }));
-    BOUQUET.forEach(([type, tone]) => {
+    // el ramo trae muchas flores; al jardín pasan 16 para dejar espacio a lo que ella plante
+    shuffle(BOUQUET.slice()).slice(0, Math.min(16, capacity() - 6)).forEach(([type, tone]) => {
       const spot = findSpot(type, Math.random() < 0.85 ? pick(centers) : null);
       if (!spot) return;
       state.plants.push(newPlant(type, spot.x, spot.z, +rand(0.5, 1).toFixed(2), tone));
@@ -1438,10 +1575,26 @@
         itemCard({ thumb: thumbs.shovel, name: 'Pala', desc: 'Quita piedras, troncos y maleza. A veces encuentras monedas o semillas.', btn: mode === 'shovel' ? 'En uso' : 'Tomar', attr: 'data-tool="shovel"', disabled: mode === 'shovel' }) +
         '<p class="note">Al subir de nivel, algunas flores dan un estirón y brota una nueva donde haya espacio.</p>';
     } else if (tab === 'seeds') {
-      body.innerHTML = SEEDS.map((s) => itemCard({
+      const card = (s) => itemCard({
         thumb: thumbs[s.id], name: s.name, desc: s.desc, price: s.price, attr: `data-seed="${s.id}"`, disabled: state.coins < s.price,
         tag: Models.toneCount(s.id) > 1 ? `${Models.toneCount(s.id)} tonos al azar` : '',
-      })).join('');
+      });
+      body.innerHTML = [['flor', 'Flores'], ['planta', 'Plantas'], ['arbol', 'Árboles']]
+        .map(([g, title]) => `<h3 class="shop-h">${title}</h3>` + SEEDS.filter((s) => s.group === g).map(card).join('')).join('');
+    } else if (tab === 'pets') {
+      const cap = petCap(state.level), have = state.pets.length, nextLvl = PET_LEVELS[have];
+      const note = have < cap
+        ? `Puedes adoptar ${cap - have === 1 ? 'una mascota más' : `${cap - have} mascotas más`}.`
+        : nextLvl ? `Para adoptar otra mascota, llega al nivel ${nextLvl}.` : 'Ya viven contigo todas las mascotas.';
+      body.innerHTML = `<p class="note warn">${note}</p>` + PETS.map((p) => {
+        const owned = state.pets.find((x) => x.type === p.id);
+        const locked = !owned && have >= cap;
+        return itemCard({
+          thumb: thumbs['pet_' + p.id], name: owned ? `${p.name}: ${owned.name}` : p.name, desc: p.desc,
+          price: owned || locked ? null : p.price, btn: owned ? 'Ya vive aquí' : `Nivel ${nextLvl}`,
+          attr: `data-pet="${p.id}"`, disabled: owned || locked || state.coins < p.price,
+        });
+      }).join('');
     } else if (tab === 'decor') {
       body.innerHTML = DECOR.map((d) => itemCard({ thumb: thumbs[d.id], name: d.name, desc: d.desc, price: d.price, attr: `data-decor="${d.id}"`, disabled: state.coins < d.price })).join('');
     } else {
@@ -1561,6 +1714,7 @@
     if (b.dataset.tool) { closeDrawer(); setMode(b.dataset.tool); }
     else if (b.dataset.seed) buy('seed', b.dataset.seed);
     else if (b.dataset.decor) buy('decor', b.dataset.decor);
+    else if (b.dataset.pet) adoptPet(b.dataset.pet);
     else if (b.hasAttribute('data-land')) buyLand();
   });
   $('#bagBody').addEventListener('click', (e) => {
@@ -1653,8 +1807,9 @@
       s.remove(obj);
       return url;
     };
-    SEEDS.forEach((x) => { out[x.id] = shot(isTree(x.id) ? Models.buildFlower(x.id) : Models.buildFlower(x.id, { stemH: 0.5, headScale: 1.2, noLeaves: true })); });
+    SEEDS.forEach((x) => { out[x.id] = shot(x.group === 'flor' ? Models.buildFlower(x.id, { stemH: 0.5, headScale: 1.2, noLeaves: true }) : Models.buildFlower(x.id)); });
     DECOR.forEach((x) => { out[x.id] = shot(Models.buildDecor(x.id, { text: x.id === 'letrero' ? '' : undefined })); });
+    Models.PET_TYPES.forEach((id) => { const p = Models.buildPet(id); p.rotation.y = 0.6; out['pet_' + id] = shot(p); });
     out.can = shot(Models.buildCan());
     const sh = Models.buildShovel(); sh.rotation.z = 0.5;
     out.shovel = shot(sh);
@@ -1676,12 +1831,31 @@
 
   const clock = new THREE.Clock();
   let elapsed = 0;
+  let lastAz = controls.getAzimuthalAngle();
+  /** Al girar la vista, las flores se mecen como si les diera el aire. */
+  function swayFromCamera() {
+    const az = controls.getAzimuthalAngle();
+    let d = az - lastAz;
+    d = Math.atan2(Math.sin(d), Math.cos(d));
+    lastAz = az;
+    if (Math.abs(d) < 0.0004) return;
+    const list = bouquet.visible ? bouquetFlowers : garden.visible ? plantsGroup.children : [];
+    for (const f of list) {
+      const w = f.userData.wob;
+      if (!w) continue;
+      w.v += d * 22; w.w += d * 9;
+      const P = f.userData.petals;
+      for (let i = 0; i < P.length; i += 2) { const p = P[i].userData.petal; if (p) p.v += d * 14 * (0.5 + hash(i)); }
+      springy.add(f);
+    }
+  }
   function loop() {
     requestAnimationFrame(loop);
     const raw = Math.min(clock.getDelta(), 0.25);
     const dt = Math.min(raw, 1 / 20);
     elapsed += dt;
     updateTweens(raw);
+    swayFromCamera();
     stepSprings(dt);
     swayFlowers(ambientTrees, elapsed * 0.6);
     if (bouquet.visible) {
@@ -1692,6 +1866,7 @@
       swayFlowers(plantsGroup.children, elapsed);
       decorGroup.children.forEach((o) => o.userData.update && o.userData.update(elapsed, dt));
       updateWets(dt);
+      updatePets(dt, elapsed);
       if (selected) {
         selRing.position.set(selected.position.x, selected.position.y + 0.02, selected.position.z);
         selRing.scale.setScalar(1 + Math.sin(elapsed * 4) * 0.05);

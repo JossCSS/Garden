@@ -134,10 +134,41 @@ window.Models = (() => {
   }
 
   // ---------- Flores ----------
+  // Textura suave para pétalos: base más oscura, nervaduras finas y borde claro
+  let petalTexture = null;
+  function petalTex() {
+    if (petalTexture) return petalTexture;
+    petalTexture = canvasTex(128, 128, (x, w, h) => {
+      const g = x.createLinearGradient(0, h, 0, 0);
+      g.addColorStop(0, '#c9b7bd'); g.addColorStop(0.35, '#f3eef0'); g.addColorStop(1, '#ffffff');
+      x.fillStyle = g; x.fillRect(0, 0, w, h);
+      for (let i = 0; i < 9; i++) {
+        const cx = w / 2 + (i - 4) * 9;
+        x.strokeStyle = `rgba(150,110,125,${0.12 + Math.random() * 0.1})`;
+        x.lineWidth = i === 4 ? 2.2 : 1;
+        x.beginPath(); x.moveTo(w / 2, h);
+        x.quadraticCurveTo(cx, h * 0.55, w / 2 + (i - 4) * 14, h * 0.08);
+        x.stroke();
+      }
+      for (let i = 0; i < 260; i++) {
+        x.fillStyle = `rgba(255,255,255,${Math.random() * 0.25})`;
+        x.fillRect(Math.random() * w, Math.random() * h, 1.5, 1.5);
+      }
+    });
+    petalTexture.wrapS = petalTexture.wrapT = THREE.ClampToEdgeWrapping;
+    return petalTexture;
+  }
+  function petalMat(color, glow) {
+    return cached(matCache, 'petal' + color + (glow || ''), () => new THREE.MeshStandardMaterial({
+      color, map: petalTex(), side: THREE.DoubleSide, roughness: 0.55,
+      emissive: glow || '#000000', emissiveIntensity: glow ? 0.55 : 0,
+    }));
+  }
+
   function ringPetals(head, petals, c) {
-    const { n, w, h, cup = 0.3, curl = 0.1, tip = 0.92, open, r = 0, y = 0, color, off = 0, ruffle = 0, jitter = 0.1, glow } = c;
+    const { n, w, h, cup = 0.3, curl = 0.1, tip = 0.92, open, r = 0, y = 0, color, off = 0, ruffle = 0, jitter = 0.1, glow, plain } = c;
     const geo = petalGeo(w, h, cup, curl, tip, ruffle);
-    const m = pmat(color, glow ? { emissive: glow, emissiveIntensity: 0.55 } : {});
+    const m = plain ? pmat(color) : petalMat(color, glow);
     for (let i = 0; i < n; i++) {
       const pivot = new THREE.Group();
       pivot.rotation.y = off + (i / n) * Math.PI * 2 + (Math.random() - 0.5) * jitter;
@@ -346,6 +377,153 @@ window.Models = (() => {
         h.add(sph(0.05, mat('#ffffff', { emissive: '#fff1a8', emissiveIntensity: 1 }), 0, 0.06, 0));
       },
     },
+    // ---------- Plantas (no flores) ----------
+    trebol: {
+      plant: true, tones: [['#6fbf7a', '#86cc8e', '#ffffff'], ['#7fae62', '#98c47a', '#ffc2d6']],
+      build(h, P, c) {
+        const lg = cached(geoCache, 'clover', () => new THREE.CircleGeometry(0.045, 12));
+        for (let i = 0; i < 11; i++) {
+          const a = i * 2.4, r = 0.05 + (i % 4) * 0.05;
+          const g = new THREE.Group();
+          g.position.set(Math.cos(a) * r, 0.04 + (i % 3) * 0.03, Math.sin(a) * r);
+          for (let k = 0; k < 3; k++) {
+            const l = new THREE.Mesh(lg, pmat(c[k % 2]));
+            l.rotation.set(-Math.PI / 2 + 0.3, 0, (k * Math.PI * 2) / 3);
+            l.position.set(Math.cos(k * 2.09) * 0.035, 0, Math.sin(k * 2.09) * 0.035);
+            g.add(l);
+          }
+          g.add(cyl(0.004, 0.004, 0.08, 4, mat('#5fae7c'), 0, -0.03, 0));
+          h.add(g);
+        }
+        [[0.08, 0.02], [-0.1, 0.08], [0.02, -0.12]].forEach(([x, z]) => {
+          const f = sph(0.035, mat(c[2]), x, 0.13, z);
+          f.scale.y = 1.2;
+          h.add(scaleBud(f)); P.push(f);
+        });
+      },
+    },
+    suculenta: {
+      plant: true, tones: [['#8fc9a8', '#a7d8bc'], ['#9fb8d8', '#b8cbe5'], ['#c3a0d6', '#d6bde3'], ['#b7d98f', '#f2a0b8']],
+      build(h, P, c) {
+        [[5, 0.1, 0.14, 0.25], [7, 0.12, 0.17, 0.75], [9, 0.13, 0.18, 1.2]].forEach(([n, w, hh, open], k) =>
+          ringPetals(h, P, { n, w, h: hh, cup: 0.7, curl: 0.05, tip: 1, open, r: 0.01 * k, y: 0.02, off: k * 0.4, color: c[k === 2 ? 1 : 0], plain: true }));
+      },
+    },
+    cactus: {
+      plant: true, tones: [['#6fb98a', '#ff8fb1'], ['#7fb8a8', '#ffd166'], ['#8cbf6b', '#ffffff']],
+      build(h, P, c) {
+        const m = mat(c[0], { roughness: 0.8, flatShading: true });
+        const body = cyl(0.11, 0.12, 0.42, 8, m, 0, 0.21, 0);
+        h.add(body, sph(0.11, m, 0, 0.42, 0));
+        [[1, 0.2, 0.18], [-1, 0.28, 0.14]].forEach(([s, y, len]) => {
+          const arm = cyl(0.05, 0.05, 0.12, 8, m, s * 0.14, y, 0);
+          arm.rotation.z = (s * Math.PI) / 2;
+          const up = cyl(0.05, 0.05, len, 8, m, s * 0.2, y + len / 2, 0);
+          h.add(arm, up, sph(0.05, m, s * 0.2, y + len, 0));
+        });
+        const fl = new THREE.Group();
+        fl.position.y = 0.5;
+        ringPetals(fl, P, { n: 6, w: 0.06, h: 0.08, cup: 0.4, open: 0.9, color: c[1] });
+        h.add(fl);
+        for (let i = 0; i < 24; i++) {
+          const a = i * 2.4, y = 0.04 + (i / 24) * 0.4;
+          h.add(sph(0.008, mat('#fff8e1'), Math.cos(a) * 0.118, y, Math.sin(a) * 0.118));
+        }
+      },
+    },
+    pampa: {
+      plant: true, tones: [['#8cc49a', '#f3dde5'], ['#9dc28a', '#f5e6c8'], ['#88bfa0', '#e8d3f0']],
+      build(h, P, c) {
+        ringPetals(h, [], { n: 16, w: 0.04, h: 0.62, cup: 0.2, curl: 0.45, tip: 1, open: 0.35, color: c[0], plain: true, jitter: 0.4 });
+        for (let i = 0; i < 5; i++) {
+          const a = i * 1.26, lean = 0.12;
+          const st = cyl(0.006, 0.006, 0.75, 4, mat('#b9c79a'), Math.cos(a) * lean * 0.5, 0.37, Math.sin(a) * lean * 0.5);
+          st.rotation.set(Math.sin(a) * 0.18, 0, -Math.cos(a) * 0.18);
+          h.add(st);
+          const pl = sph(0.05, mat(c[1], { roughness: 1 }), Math.cos(a) * lean, 0.8, Math.sin(a) * lean);
+          pl.scale.set(0.9, 2.6, 0.9);
+          h.add(scaleBud(pl)); P.push(pl);
+        }
+      },
+    },
+    helecho: {
+      plant: true, tones: [['#5fae7c', '#7cc594'], ['#6fae5f', '#8cc47a']],
+      build(h, P, c) {
+        ringPetals(h, P, { n: 10, w: 0.13, h: 0.55, cup: 0.15, curl: 0.4, tip: 1, ruffle: 0.22, open: 0.75, color: c[0], plain: true, jitter: 0.3 });
+        ringPetals(h, P, { n: 6, w: 0.11, h: 0.42, cup: 0.15, curl: 0.3, tip: 1, ruffle: 0.2, open: 0.35, off: 0.3, color: c[1], plain: true });
+      },
+    },
+    fresa: {
+      plant: true, tones: [['#6fbf8a', '#ef3b5d'], ['#7cc594', '#ff6f8f']],
+      build(h, P, c) {
+        const lg = petalGeo(0.12, 0.14, 0.3, 0.05, 0.85, 0.05);
+        for (let i = 0; i < 7; i++) {
+          const g = new THREE.Group();
+          g.rotation.y = i * 0.9;
+          g.add(cyl(0.006, 0.006, 0.22, 4, mat('#5fae7c'), 0, 0.09, 0.05));
+          for (let k = -1; k <= 1; k++) {
+            const l = new THREE.Mesh(lg, pmat(c[0]));
+            l.position.set(0, 0.18, 0.08);
+            l.rotation.set(1.1, k * 0.7, 0);
+            g.add(l);
+          }
+          h.add(g);
+        }
+        for (let i = 0; i < 6; i++) {
+          const a = i * 1.05 + 0.3, r = 0.16;
+          const b = new THREE.Mesh(cached(geoCache, 'berry', () => new THREE.ConeGeometry(0.035, 0.06, 10)), mat(c[1], { roughness: 0.4 }));
+          b.position.set(Math.cos(a) * r, 0.05, Math.sin(a) * r);
+          b.rotation.x = Math.PI;
+          h.add(scaleBud(b)); P.push(b);
+          h.add(sph(0.018, mat('#6fbf8a'), b.position.x, 0.08, b.position.z));
+        }
+        const fl = new THREE.Group();
+        fl.position.set(0, 0.24, 0);
+        ringPetals(fl, P, { n: 5, w: 0.05, h: 0.05, cup: 0.3, open: 1.3, color: '#ffffff' });
+        fl.add(sph(0.015, mat('#ffd166'), 0, 0.01, 0));
+        h.add(fl);
+      },
+    },
+    bambu: {
+      plant: true, tones: [['#8cc47a', '#a9d88f'], ['#b8c96a', '#d0dc8a']],
+      build(h, P, c) {
+        const m = mat(c[0], { roughness: 0.5 });
+        const node = mat('#6f9e52');
+        [[0, 0, 1.3], [0.1, 0.06, 1.05], [-0.08, 0.08, 0.9], [0.03, -0.1, 1.15]].forEach(([x, z, H]) => {
+          const segs = Math.round(H / 0.26);
+          for (let k = 0; k < segs; k++) {
+            h.add(cyl(0.03, 0.032, 0.25, 8, m, x, k * 0.26 + 0.125, z));
+            const ring = new THREE.Mesh(cached(geoCache, 'bnode', () => new THREE.TorusGeometry(0.032, 0.007, 4, 12)), node);
+            ring.rotation.x = Math.PI / 2; ring.position.set(x, k * 0.26 + 0.25, z);
+            h.add(ring);
+          }
+          const top = new THREE.Group();
+          top.position.set(x, segs * 0.26, z);
+          ringPetals(top, P, { n: 5, w: 0.05, h: 0.28, cup: 0.2, curl: 0.3, tip: 1, open: 1.1, color: c[1], plain: true, jitter: 0.5 });
+          h.add(top);
+        });
+      },
+    },
+    monstera: {
+      plant: true, tones: [['#3f9a6b', '#4fae7c'], ['#4a9e6e', '#e6f2d9']],
+      build(h, P, c) {
+        const lg = petalGeo(0.36, 0.42, 0.18, 0.2, 0.88, 0.04);
+        for (let i = 0; i < 6; i++) {
+          const g = new THREE.Group();
+          g.rotation.y = i * 1.05 + Math.random() * 0.3;
+          const len = 0.35 + (i % 3) * 0.1;
+          const st = cyl(0.012, 0.015, len, 5, mat('#4f9e6a'), 0, len / 2, 0.08);
+          st.rotation.x = 0.45;
+          g.add(st);
+          const leaf = new THREE.Mesh(lg, pmat(i % 3 === 0 ? c[1] : c[0], { roughness: 0.45 }));
+          leaf.position.set(0, len * 0.9, len * 0.45);
+          const rest = 1.0;
+          leaf.rotation.x = rest;
+          leaf.userData.petal = { rest, a: 0, v: 0, mode: 'rot' };
+          g.add(leaf); h.add(g); P.push(leaf);
+        }
+      },
+    },
     cerezo: { tree: true, slots: 3, stemH: 1.1, tones: [['#ffc1d9', '#ffd6e6', '#ffe6ef', '#f7a8c4'], ['#ffffff', '#fff3f7', '#ffe9f1', '#fde0ea']] },
     jacaranda: { tree: true, slots: 3, stemH: 1.2, tones: [['#a78bdb', '#b9a0e6', '#9575cd', '#c5b3ee']] },
   };
@@ -393,11 +571,32 @@ window.Models = (() => {
     return root;
   }
 
+  function buildPlant(type, def, c, opts) {
+    const root = new THREE.Group();
+    const P = [];
+    const stem = new THREE.Object3D();
+    root.add(stem);
+    const headPivot = new THREE.Group();
+    const head = new THREE.Group();
+    head.rotation.y = Math.random() * Math.PI * 2;
+    headPivot.add(head);
+    root.add(headPivot);
+    def.build(head, P, c);
+    const hs = opts.headScale || 1;
+    headPivot.scale.setScalar(hs);
+    root.userData = {
+      kind: 'flower', type, petals: P, stem, headPivot, stemH: 0, plant: true, hs,
+      wob: { a: 0, v: 0, b: 0, w: 0 }, phase: Math.random() * 6.28, color: c[0],
+    };
+    return root;
+  }
+
   function buildFlower(type, opts = {}) {
     const def = FLOWERS[type] || FLOWERS.margarita;
     const ti = Math.max(0, Math.min(def.tones.length - 1, opts.tone | 0));
     const c = def.tones[ti];
     if (def.tree) return buildTree(type, def, c);
+    if (def.plant) return buildPlant(type, def, c, opts);
     const root = new THREE.Group();
     const petals = [];
     const stemH = opts.stemH || def.stemH;
@@ -414,13 +613,14 @@ window.Models = (() => {
     if (!opts.noLeaves && def.leaves) addLeaves(root, def.leaves, stemH, def.long);
     if (opts.headScale) headPivot.scale.setScalar(opts.headScale);
     root.userData = {
-      kind: 'flower', type, petals, stem, headPivot, stemH,
+      kind: 'flower', type, petals, stem, headPivot, stemH, hs: opts.headScale || 1,
       wob: { a: 0, v: 0, b: 0, w: 0 }, phase: Math.random() * 6.28, color: c[0],
     };
     return root;
   }
 
   function setStemStretch(f, s) {
+    if (f.userData.plant) { f.userData.headPivot.scale.y = (f.userData.hs || 1) * s; return; }
     f.userData.stem.scale.y = s;
     f.userData.headPivot.position.y = f.userData.stemH * s;
   }
@@ -824,6 +1024,121 @@ window.Models = (() => {
     return g;
   }
 
+  // ---------- Mascotas ----------
+  const ell = (rx, ry, rz, m, x = 0, y = 0, z = 0) => { const o = new THREE.Mesh(sphereGeo(1, 16, 12), m); o.scale.set(rx, ry, rz); o.position.set(x, y, z); return o; };
+  const PET_DEFS = {
+    gato: { body: '#f4a95b', belly: '#fff3e6', ear: 'point', tail: 'up', inner: '#ffb3c6' },
+    perro: { body: '#d9a066', belly: '#fff1dc', ear: 'flop', earColor: '#a8703f', tail: 'short' },
+    conejo: { body: '#f3eef2', belly: '#ffffff', ear: 'long', inner: '#ffc2d6', tail: 'pom', hop: true },
+    cerdito: { body: '#f9b8c6', belly: '#fcd0da', ear: 'point', inner: '#f48fb1', tail: 'curl', snout: '#f48fb1' },
+    zorro: { body: '#f08a3c', belly: '#ffffff', ear: 'point', earTip: '#3a2a2a', tail: 'bush', legColor: '#3a2a2a' },
+    panda: { body: '#ffffff', belly: '#ffffff', ear: 'round', earColor: '#2e2a33', tail: 'short', legColor: '#2e2a33', patches: true },
+    pinguino: { biped: true, body: '#2e2a3a', belly: '#ffffff', beak: '#ff9f43', feet: '#ff9f43' },
+    pato: { biped: true, duck: true, body: '#ffd65c', belly: '#ffe38a', beak: '#ff9f43', feet: '#ff9f43' },
+  };
+
+  function petFace(head, r, d, zf) {
+    const black = mat('#2b2230', { roughness: 0.3 });
+    const white = mat('#ffffff');
+    [-1, 1].forEach((s) => {
+      head.add(sph(0.022, black, s * r * 0.4, r * 0.2, zf));
+      head.add(sph(0.008, white, s * r * 0.4 + 0.007, r * 0.2 + 0.01, zf + 0.018));
+      head.add(sph(0.02, mat('#ff9fb8'), s * r * 0.62, -r * 0.18, zf - 0.02));
+    });
+  }
+
+  function buildPet(type) {
+    const d = PET_DEFS[type] || PET_DEFS.gato;
+    const g = new THREE.Group();
+    const root = new THREE.Group();
+    g.add(root);
+    const legs = [], wings = [];
+    const bm = mat(d.body, { roughness: 0.75 }), wm = mat(d.belly, { roughness: 0.8 });
+    const head = new THREE.Group();
+    let tailPivot = null;
+
+    if (d.biped) {
+      if (d.duck) {
+        root.add(ell(0.15, 0.13, 0.2, bm, 0, 0.2, 0));
+        head.position.set(0, 0.38, 0.12);
+        head.add(ell(0.1, 0.1, 0.1, bm));
+        head.add(ell(0.05, 0.018, 0.06, mat(d.beak), 0, -0.02, 0.11));
+        petFace(head, 0.1, d, 0.085);
+        const tail = ell(0.05, 0.04, 0.06, bm, 0, 0.27, -0.2);
+        tail.rotation.x = -0.6;
+        root.add(tail);
+      } else {
+        root.add(ell(0.15, 0.21, 0.14, bm, 0, 0.23, 0));
+        root.add(ell(0.11, 0.16, 0.07, wm, 0, 0.21, 0.08));
+        head.position.set(0, 0.45, 0.02);
+        head.add(ell(0.11, 0.1, 0.1, bm));
+        head.add(ell(0.08, 0.06, 0.05, wm, 0, -0.01, 0.06));
+        const beak = new THREE.Mesh(cached(geoCache, 'beak', () => new THREE.ConeGeometry(0.025, 0.07, 8)), mat(d.beak));
+        beak.rotation.x = Math.PI / 2; beak.position.set(0, -0.02, 0.12);
+        head.add(beak);
+        petFace(head, 0.1, d, 0.09);
+      }
+      [-1, 1].forEach((s) => {
+        const w = new THREE.Group();
+        w.position.set(s * 0.14, 0.3, 0);
+        const wing = ell(0.03, 0.11, 0.07, bm, 0, -0.08, 0);
+        w.add(wing); root.add(w); wings.push(w);
+        const leg = new THREE.Group();
+        leg.position.set(s * 0.06, 0.06, 0.02);
+        leg.add(cyl(0.012, 0.012, 0.06, 5, mat(d.feet), 0, -0.03, 0));
+        leg.add(ell(0.045, 0.012, 0.065, mat(d.feet), 0, -0.058, 0.03));
+        g.add(leg); legs.push(leg);
+      });
+    } else {
+      const lm = mat(d.legColor || d.body, { roughness: 0.75 });
+      root.add(ell(0.15, 0.13, 0.22, bm, 0, 0.22, 0));
+      root.add(ell(0.11, 0.08, 0.17, wm, 0, 0.17, 0.03));
+      head.position.set(0, 0.37, 0.19);
+      head.add(ell(0.14, 0.13, 0.13, bm));
+      head.add(ell(0.075, 0.055, 0.06, wm, 0, -0.035, 0.1));
+      head.add(sph(0.022, mat(d.snout || '#3a2a2a'), 0, -0.01, 0.155));
+      if (d.snout) { const sn = ell(0.05, 0.04, 0.02, mat(d.snout), 0, -0.03, 0.15); head.add(sn); }
+      petFace(head, 0.14, d, 0.11);
+      if (d.patches) [-1, 1].forEach((s) => { const p = ell(0.035, 0.045, 0.02, mat('#2e2a33'), s * 0.055, 0.03, 0.115); p.rotation.z = s * 0.4; head.add(p); });
+      [-1, 1].forEach((s) => {
+        const em = mat(d.earColor || d.body, { roughness: 0.75 });
+        if (d.ear === 'point') {
+          const e = new THREE.Mesh(cached(geoCache, 'ear', () => new THREE.ConeGeometry(0.055, 0.11, 4)), em);
+          e.position.set(s * 0.08, 0.13, -0.01); e.rotation.z = -s * 0.35;
+          head.add(e);
+          if (d.inner) { const i = new THREE.Mesh(cached(geoCache, 'earIn', () => new THREE.ConeGeometry(0.03, 0.07, 4)), mat(d.inner)); i.position.set(s * 0.078, 0.12, 0.015); i.rotation.z = -s * 0.35; head.add(i); }
+          if (d.earTip) { const t = new THREE.Mesh(cached(geoCache, 'earTip', () => new THREE.ConeGeometry(0.025, 0.04, 4)), mat(d.earTip)); t.position.set(s * 0.1, 0.18, -0.01); t.rotation.z = -s * 0.35; head.add(t); }
+        } else if (d.ear === 'flop') {
+          const e = ell(0.04, 0.09, 0.03, em, s * 0.13, 0.0, 0); e.rotation.z = s * 0.35; head.add(e);
+        } else if (d.ear === 'long') {
+          const e = ell(0.035, 0.14, 0.022, em, s * 0.05, 0.2, -0.02); e.rotation.z = -s * 0.15; head.add(e);
+          const i = ell(0.02, 0.1, 0.01, mat(d.inner), s * 0.05, 0.2, -0.002); i.rotation.z = -s * 0.15; head.add(i);
+        } else {
+          head.add(sph(0.045, em, s * 0.1, 0.11, -0.01));
+        }
+      });
+      [[-1, 1], [1, 1], [-1, -1], [1, -1]].forEach(([sx, sz]) => {
+        const leg = new THREE.Group();
+        leg.position.set(sx * 0.085, 0.14, sz * 0.12);
+        leg.add(cyl(0.035, 0.03, 0.14, 7, lm, 0, -0.07, 0));
+        leg.add(sph(0.034, lm, 0, -0.135, 0.01));
+        g.add(leg); legs.push(leg);
+      });
+      tailPivot = new THREE.Group();
+      tailPivot.position.set(0, 0.26, -0.2);
+      if (d.tail === 'up') { const t = cyl(0.025, 0.02, 0.24, 6, bm, 0, 0.12, -0.02); t.rotation.x = -0.35; tailPivot.add(t); tailPivot.rotation.x = -0.5; }
+      else if (d.tail === 'short') tailPivot.add(ell(0.035, 0.035, 0.06, mat(d.legColor || d.body), 0, 0.02, -0.02));
+      else if (d.tail === 'pom') tailPivot.add(sph(0.05, wm, 0, -0.02, 0));
+      else if (d.tail === 'curl') { const t = new THREE.Mesh(cached(geoCache, 'curl', () => new THREE.TorusGeometry(0.035, 0.012, 6, 14, 5)), bm); t.rotation.y = Math.PI / 2; tailPivot.add(t); }
+      else if (d.tail === 'bush') { const t = ell(0.07, 0.07, 0.16, bm, 0, 0.05, -0.12); t.rotation.x = -0.5; tailPivot.add(t, ell(0.045, 0.045, 0.06, wm, 0, 0.12, -0.25)); }
+      root.add(tailPivot);
+    }
+    root.add(head);
+    g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    g.userData = { kind: 'pet', type, root, head, legs, wings, tailPivot, biped: !!d.biped, hop: !!d.hop };
+    return g;
+  }
+
   // ---------- Pala ----------
   function buildShovel() {
     const g = new THREE.Group();
@@ -850,10 +1165,12 @@ window.Models = (() => {
 
   return {
     mat, pmat, woodMat, dirtMat, petalGeo, sphereGeo, boxGeo, grassGeo,
-    buildFlower, setStemStretch, buildDecor, buildCan, buildShovel, buildFern, buildObstacle,
+    buildFlower, setStemStretch, buildDecor, buildCan, buildShovel, buildFern, buildObstacle, buildPet,
+    PET_TYPES: Object.keys(PET_DEFS),
     FLOWER_TYPES: Object.keys(FLOWERS),
     DECOR_TYPES: Object.keys(DECOR),
     isTree: (t) => !!(FLOWERS[t] && FLOWERS[t].tree),
+    isPlant: (t) => !!(FLOWERS[t] && FLOWERS[t].plant),
     toneCount: (t) => (FLOWERS[t] ? FLOWERS[t].tones.length : 1),
     flowerColor: (t, tone = 0) => { const f = FLOWERS[t] || FLOWERS.margarita; return f.tones[Math.min(tone, f.tones.length - 1)][0]; },
   };
